@@ -35,7 +35,8 @@ const nextConfig: NextConfig = {
   },
   webpack: (config) => {
     config.externals = [...config.externals, {
-        "uuid": "uuid"
+        "uuid": "uuid",
+        "node-fetch": "node-fetch",
     }]
     return config
   }
