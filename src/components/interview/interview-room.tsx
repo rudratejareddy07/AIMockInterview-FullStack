@@ -1,9 +1,10 @@
+
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { LiveKitRoom, VideoConference, useTracks } from '@livekit/components-react';
-import { Room, Track, createLocalAudioTrack } from 'livekit-client';
+import { Room, Track, createLocalAudioTrack, LocalAudioTrack, RemoteTrackPublication, RemoteParticipant, RoomEvent } from 'livekit-client';
 import { generateToken, saveInterviewTranscript } from '@/lib/actions';
 import { realTimeTranscription } from '@/ai/flows/real-time-transcription';
 import { interviewAgent } from '@/ai/flows/interview-agent';
@@ -34,7 +35,7 @@ function AudioTranscriptionHandler({
     );
 
     if (localMicTrack?.mediaStream) {
-      if (mediaRecorderRef.current) {
+      if (mediaRecorderRef.current?.state === 'recording') {
         mediaRecorderRef.current.stop();
       }
 
@@ -64,7 +65,9 @@ function AudioTranscriptionHandler({
     }
 
     return () => {
-      mediaRecorderRef.current?.stop();
+      if (mediaRecorderRef.current?.state === 'recording') {
+        mediaRecorderRef.current.stop();
+      }
     };
   }, [tracks, onTranscript, onError]);
 
@@ -74,24 +77,22 @@ function AudioTranscriptionHandler({
 export default function InterviewRoom({ roomName, participantName, interviewTopic }: InterviewRoomProps) {
   const [token, setToken] = useState<string>('');
   const [agentToken, setAgentToken] = useState<string>('');
-  const [fullTranscript, setFullTranscript] = useState<string[]>([
-    'AI: Hello, let\'s begin. I will ask you a series of questions related to your chosen topic. Please answer clearly.',
-  ]);
+  const [fullTranscript, setFullTranscript] = useState<string[]>([]);
   const [isEnding, setIsEnding] = useState(false);
   const [isAgentSpeaking, setIsAgentSpeaking] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
   const aiAvatar = PlaceHolderImages.find((p) => p.id === 'ai-avatar');
   const agentRoomRef = useRef<Room | null>(null);
-  const currentAudioTrackRef = useRef<Track | null>(null);
+  const audioTrackRef = useRef<LocalAudioTrack | null>(null);
+  const audioElRef = useRef<HTMLAudioElement | null>(null);
 
-  // Effect to get tokens for both user and agent
   useEffect(() => {
     (async () => {
       try {
         const userJwt = await generateToken(roomName, participantName);
         setToken(userJwt);
-        const agentJwt = await generateToken(roomName, 'AI-Interviewer', true);
+        const agentJwt = await generateToken(roomName, 'AI-Interviewer');
         setAgentToken(agentJwt);
       } catch (e) {
         console.error(e);
@@ -104,32 +105,9 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
     })();
   }, [roomName, participantName, toast]);
 
-  // Effect to manage agent's room connection
-  useEffect(() => {
-    if (agentToken && !agentRoomRef.current) {
-      const room = new Room();
-      agentRoomRef.current = room;
-      room.connect(process.env.NEXT_PUBLIC_LIVEKIT_URL!, agentToken).then(() => {
-        console.log('AI Agent connected to the room');
-      });
-
-      return () => {
-        room.disconnect();
-        agentRoomRef.current = null;
-      };
-    }
-  }, [agentToken]);
-
   const handleAgentResponse = useCallback(
     async (transcriptHistory: string[]) => {
-      if (!agentRoomRef.current) {
-        toast({
-          title: 'AI Error',
-          description: 'AI agent is not connected.',
-          variant: 'destructive',
-        });
-        return;
-      }
+      if (isAgentSpeaking) return;
       setIsAgentSpeaking(true);
 
       try {
@@ -137,28 +115,16 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
           interviewTopic,
           transcript: transcriptHistory.join('\n'),
         });
-
+        
         setFullTranscript((prev) => [...prev, `AI: ${responseText}`]);
 
-        const audioBlob = await (await fetch(audioDataUri)).blob();
-        const audioTrack = await createLocalAudioTrack(audioBlob, { name: 'ai-voice' });
-        
-        if (currentAudioTrackRef.current) {
-          await agentRoomRef.current.localParticipant.unpublishTrack(currentAudioTrackRef.current);
+        if (audioElRef.current) {
+          audioElRef.current.src = audioDataUri;
+          audioElRef.current.play().catch(e => console.error("Audio play failed", e));
+          audioElRef.current.onended = () => {
+            setIsAgentSpeaking(false);
+          };
         }
-
-        const publication = await agentRoomRef.current.localParticipant.publishTrack(audioTrack.track, {
-            source: Track.Source.Microphone, // Publish as mic to be picked up by default
-        });
-        currentAudioTrackRef.current = publication.track;
-
-        // The track will play automatically for all participants
-        // We can listen for it to end to update the agent's speaking state
-        audioTrack.track.on(Track.Event.Ended, () => {
-             setIsAgentSpeaking(false);
-             agentRoomRef.current?.localParticipant.unpublishTrack(audioTrack.track);
-        });
-
 
       } catch (e) {
         console.error('Agent error', e);
@@ -170,19 +136,68 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
         setIsAgentSpeaking(false);
       }
     },
-    [interviewTopic, toast]
+    [interviewTopic, toast, isAgentSpeaking]
   );
+  
+  useEffect(() => {
+    if (!token) return;
+    const room = new Room();
+    room.connect(process.env.NEXT_PUBLIC_LIVEKIT_URL!, token);
+    
+    const handleTrackSubscribed = (track: Track, publication: RemoteTrackPublication, participant: RemoteParticipant) => {
+        if(track.kind === Track.Kind.Audio && participant.identity === 'AI-Interviewer') {
+            const el = track.attach();
+            document.body.appendChild(el);
+            el.play().catch(e => console.error("Could not play agent audio", e));
+        }
+    }
+    
+    room.on(RoomEvent.TrackSubscribed, handleTrackSubscribed);
+
+    return () => {
+        room.off(RoomEvent.TrackSubscribed, handleTrackSubscribed);
+        room.disconnect();
+    }
+  }, [token]);
+
+  // Initial greeting from AI
+  useEffect(() => {
+    if (fullTranscript.length === 0) {
+      const initialTranscript = ['AI: Hello, let\'s begin. I will ask you a series of questions related to your chosen topic. Please answer clearly.'];
+      setFullTranscript(initialTranscript);
+      handleAgentResponse(initialTranscript);
+    }
+  }, [handleAgentResponse, fullTranscript.length]);
+
+
+  useEffect(() => {
+    if (!agentToken || agentRoomRef.current) return;
+    
+    const room = new Room();
+    agentRoomRef.current = room;
+
+    room.connect(process.env.NEXT_PUBLIC_LIVEKIT_URL!, agentToken)
+      .then(() => {
+        console.log('AI Agent connected to the room');
+      });
+
+    return () => {
+      room.disconnect();
+      agentRoomRef.current = null;
+    };
+  }, [agentToken]);
 
   const handleTranscript = useCallback(
     (text: string) => {
+      if (!text || isAgentSpeaking) return;
       const newUserLine = `User: ${text}`;
-      const updatedTranscript = [...fullTranscript, newUserLine];
-      setFullTranscript(updatedTranscript);
-      if (!isAgentSpeaking) {
+      setFullTranscript((prev) => {
+        const updatedTranscript = [...prev, newUserLine];
         handleAgentResponse(updatedTranscript);
-      }
+        return updatedTranscript;
+      });
     },
-    [fullTranscript, isAgentSpeaking, handleAgentResponse]
+    [isAgentSpeaking, handleAgentResponse]
   );
 
   const handleTranscriptionError = useCallback(
@@ -207,8 +222,6 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
         description: 'Generating your feedback report...',
       });
 
-      // Pass transcript through query params as a temporary solution
-      // In a real app, this would be saved and fetched on the report page
       const encodedTranscript = encodeURIComponent(finalTranscript);
       router.push(`/report/${roomName}?transcript=${encodedTranscript}`);
     } catch (e) {
@@ -222,7 +235,7 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
     }
   };
 
-  if (token === '' || agentToken === '') {
+  if (token === '') {
     return (
       <div className="flex items-center justify-center h-screen">
         <Loader2 className="h-8 w-8 animate-spin" />
@@ -241,6 +254,7 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
       style={{ height: '100vh' }}
       onDisconnected={() => handleEndInterview()}
     >
+      <audio ref={audioElRef} style={{ display: 'none' }} />
       <div className="h-full flex flex-col md:flex-row p-4 gap-4">
         <div className="flex-1 flex flex-col gap-4">
           <div className="flex-1 bg-black rounded-lg overflow-hidden relative">
