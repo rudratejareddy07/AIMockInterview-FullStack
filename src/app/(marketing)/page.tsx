@@ -31,8 +31,8 @@ export default function MarketingPage() {
     <div className="flex flex-col min-h-screen">
       <header className="container mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
         <Logo />
-        <Button asChild variant="ghost">
-          <Link href="/login">Log In</Link>
+        <Button asChild>
+          <Link href="/dashboard">Get Started</Link>
         </Button>
       </header>
 
@@ -49,7 +49,7 @@ export default function MarketingPage() {
               </p>
               <div className="flex flex-col sm:flex-row gap-4">
                 <Button asChild size="lg" className="bg-accent hover:bg-accent/90 text-accent-foreground">
-                  <Link href="/signup">Get Started for Free</Link>
+                  <Link href="/dashboard">Start Practicing Now</Link>
                 </Button>
               </div>
             </div>
