@@ -171,9 +171,9 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
       if (!text || isAgentSpeaking) return;
       const newUserLine = `User: ${text}`;
       setFullTranscript((prev) => {
-        if (prev.at(-1)?.endsWith(text)) return prev;
         const updatedTranscript = [...prev, newUserLine];
-        handleAgentResponse(updatedTranscript);
+        // This is the key fix: trigger the agent response after getting the user's transcript
+        handleAgentResponse(updatedTranscript); 
         return updatedTranscript;
       });
     },
@@ -301,3 +301,5 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
     </LiveKitRoom>
   );
 }
+
+    
