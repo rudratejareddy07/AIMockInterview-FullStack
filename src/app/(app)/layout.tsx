@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { Home, LineChart, Menu, Video } from "lucide-react";
 import Link from "next/link";
@@ -65,9 +65,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               </Button>
             </SheetTrigger>
             <SheetContent side="left" className="flex flex-col">
-                <div className="mb-4">
-                    <Logo/>
-                </div>
+                <SheetHeader className="mb-4 text-left">
+                  <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
+                  <Logo/>
+                </SheetHeader>
               {navContent}
             </SheetContent>
           </Sheet>
