@@ -61,7 +61,7 @@ function AudioTranscriptionHandler({
         }
       };
 
-      mediaRecorder.start(3000); // Capture 3-second chunks
+      mediaRecorder.start(5000); // Capture 5-second chunks
     }
 
     return () => {
@@ -156,12 +156,13 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
   
   // Initial greeting from AI
   useEffect(() => {
-    if (token && fullTranscript.length === 0) {
-      const initialTranscript = [`AI: Hello and welcome! Let's begin the interview on ${interviewTopic}.`];
-      setFullTranscript(initialTranscript);
-      handleAgentResponse(initialTranscript);
+    if (token && agentToken && fullTranscript.length === 0) {
+      setTimeout(() => {
+         const initialTranscript = [`AI: Hello and welcome! Let's begin the interview on ${interviewTopic}.`];
+        handleAgentResponse(initialTranscript);
+      }, 3000)
     }
-  }, [token, interviewTopic, handleAgentResponse, fullTranscript.length]);
+  }, [token, agentToken, interviewTopic, handleAgentResponse, fullTranscript.length]);
 
 
   const handleTranscript = useCallback(
@@ -225,7 +226,7 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
 
   if (token === '') {
     return (
-      <div className="flex items-center justify-center h-screen">
+      <div className="flex items-center justify-center min-h-screen bg-gray-900 text-white">
         <Loader2 className="h-8 w-8 animate-spin" />
         <p className="ml-4 text-lg">Joining interview room...</p>
       </div>
@@ -239,12 +240,12 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
       token={token}
       serverUrl={process.env.NEXT_PUBLIC_LIVEKIT_URL}
       data-lk-theme="default"
-      style={{ height: '100vh' }}
+      style={{ height: 'calc(100vh - 60px)' }}
       onDisconnected={() => handleEndInterview()}
       onTrackSubscribed={onTrackSubscribed}
     >
       <audio ref={audioElRef} style={{ display: 'none' }} />
-      <div className="h-full flex flex-col md:flex-row p-4 gap-4">
+      <div className="h-full flex flex-col md:flex-row p-4 gap-4 bg-gray-900 text-white">
         <div className="flex-1 flex flex-col gap-4">
           <div className="flex-1 bg-black rounded-lg overflow-hidden relative">
             <VideoConference />
