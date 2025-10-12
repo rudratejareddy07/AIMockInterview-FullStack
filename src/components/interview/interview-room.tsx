@@ -4,7 +4,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { LiveKitRoom, VideoConference, useTracks } from '@livekit/components-react';
-import { Room, Track, createLocalAudioTrack, LocalAudioTrack, RemoteTrackPublication, RemoteParticipant, RoomEvent } from 'livekit-client';
+import { Room, Track, RemoteTrackPublication, RemoteParticipant, RoomEvent } from 'livekit-client';
 import { generateToken, saveInterviewTranscript } from '@/lib/actions';
 import { realTimeTranscription } from '@/ai/flows/real-time-transcription';
 import { interviewAgent } from '@/ai/flows/interview-agent';
@@ -84,7 +84,6 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
   const { toast } = useToast();
   const aiAvatar = PlaceHolderImages.find((p) => p.id === 'ai-avatar');
   const agentRoomRef = useRef<Room | null>(null);
-  const audioTrackRef = useRef<LocalAudioTrack | null>(null);
   const audioElRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
@@ -104,6 +103,22 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
       }
     })();
   }, [roomName, participantName, toast]);
+  
+  useEffect(() => {
+    if (!agentToken) return;
+
+    const agentRoom = new Room();
+    agentRoomRef.current = agentRoom;
+
+    agentRoom.connect(process.env.NEXT_PUBLIC_LIVEKIT_URL!, agentToken).then(() => {
+      console.log('AI Agent connected to the room');
+    });
+
+    return () => {
+      agentRoom.disconnect();
+    }
+
+  }, [agentToken]);
 
   const handleAgentResponse = useCallback(
     async (transcriptHistory: string[]) => {
@@ -139,53 +154,15 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
     [interviewTopic, toast, isAgentSpeaking]
   );
   
-  useEffect(() => {
-    if (!token) return;
-    const room = new Room();
-    room.connect(process.env.NEXT_PUBLIC_LIVEKIT_URL!, token);
-    
-    const handleTrackSubscribed = (track: Track, publication: RemoteTrackPublication, participant: RemoteParticipant) => {
-        if(track.kind === Track.Kind.Audio && participant.identity === 'AI-Interviewer') {
-            const el = track.attach();
-            document.body.appendChild(el);
-            el.play().catch(e => console.error("Could not play agent audio", e));
-        }
-    }
-    
-    room.on(RoomEvent.TrackSubscribed, handleTrackSubscribed);
-
-    return () => {
-        room.off(RoomEvent.TrackSubscribed, handleTrackSubscribed);
-        room.disconnect();
-    }
-  }, [token]);
-
   // Initial greeting from AI
   useEffect(() => {
-    if (fullTranscript.length === 0) {
-      const initialTranscript = ['AI: Hello, let\'s begin. I will ask you a series of questions related to your chosen topic. Please answer clearly.'];
+    if (token && fullTranscript.length === 0) {
+      const initialTranscript = [`AI: Hello and welcome! Let's begin the interview on ${interviewTopic}.`];
       setFullTranscript(initialTranscript);
       handleAgentResponse(initialTranscript);
     }
-  }, [handleAgentResponse, fullTranscript.length]);
+  }, [token, interviewTopic, handleAgentResponse, fullTranscript.length]);
 
-
-  useEffect(() => {
-    if (!agentToken || agentRoomRef.current) return;
-    
-    const room = new Room();
-    agentRoomRef.current = room;
-
-    room.connect(process.env.NEXT_PUBLIC_LIVEKIT_URL!, agentToken)
-      .then(() => {
-        console.log('AI Agent connected to the room');
-      });
-
-    return () => {
-      room.disconnect();
-      agentRoomRef.current = null;
-    };
-  }, [agentToken]);
 
   const handleTranscript = useCallback(
     (text: string) => {
@@ -234,6 +211,17 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
       setIsEnding(false);
     }
   };
+  
+    const onTrackSubscribed = (track: Track, publication: RemoteTrackPublication, participant: RemoteParticipant) => {
+        if(track.kind === Track.Kind.Audio && participant.identity === 'AI-Interviewer') {
+            const el = track.attach();
+            if(audioElRef.current) {
+                audioElRef.current.appendChild(el);
+                el.play().catch(e => console.error("Could not play agent audio", e));
+            }
+        }
+    }
+
 
   if (token === '') {
     return (
@@ -253,6 +241,7 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
       data-lk-theme="default"
       style={{ height: '100vh' }}
       onDisconnected={() => handleEndInterview()}
+      onTrackSubscribed={onTrackSubscribed}
     >
       <audio ref={audioElRef} style={{ display: 'none' }} />
       <div className="h-full flex flex-col md:flex-row p-4 gap-4">
