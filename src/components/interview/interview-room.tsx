@@ -6,19 +6,20 @@ import {
   LiveKitRoom,
   VideoConference,
   useTracks,
-  useLiveKitRoom,
 } from "@livekit/components-react";
 import { Track } from "livekit-client";
 import { generateToken, saveInterviewTranscript } from "@/lib/actions";
 import { realTimeTranscription } from "@/ai/flows/real-time-transcription";
+import { interviewAgent } from "@/ai/flows/interview-agent";
 import { useToast } from "@/hooks/use-toast";
 import Image from "next/image";
 import { PlaceHolderImages } from "@/lib/placeholder-images";
-import { Loader2, Mic, MicOff, Video, VideoOff } from "lucide-react";
+import { Loader2 } from "lucide-react";
 
 interface InterviewRoomProps {
   roomName: string;
   participantName: string;
+  interviewTopic: string;
 }
 
 function AudioTranscriptionHandler({ onTranscript, onError }: { onTranscript: (text: string) => void, onError: (error: string) => void }) {
@@ -69,13 +70,15 @@ function AudioTranscriptionHandler({ onTranscript, onError }: { onTranscript: (t
 }
 
 
-export default function InterviewRoom({ roomName, participantName }: InterviewRoomProps) {
+export default function InterviewRoom({ roomName, participantName, interviewTopic }: InterviewRoomProps) {
   const [token, setToken] = useState<string>("");
-  const [fullTranscript, setFullTranscript] = useState<string[]>([]);
+  const [fullTranscript, setFullTranscript] = useState<string[]>(["AI: Hello, let's begin. I will ask you a series of questions related to your chosen topic. Please answer clearly."]);
   const [isEnding, setIsEnding] = useState(false);
+  const [isAgentSpeaking, setIsAgentSpeaking] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
   const aiAvatar = PlaceHolderImages.find(p => p.id === 'ai-avatar');
+  const audioRef = useRef<HTMLAudioElement>(null);
 
   useEffect(() => {
     (async () => {
@@ -93,9 +96,38 @@ export default function InterviewRoom({ roomName, participantName }: InterviewRo
     })();
   }, [roomName, participantName, toast]);
 
+  const handleAgentResponse = useCallback(async (transcriptHistory: string[]) => {
+    setIsAgentSpeaking(true);
+    try {
+      const { responseText, audioDataUri } = await interviewAgent({
+        interviewTopic,
+        transcript: transcriptHistory.join('\n'),
+      });
+      setFullTranscript(prev => [...prev, `AI: ${responseText}`]);
+      if (audioRef.current) {
+        audioRef.current.src = audioDataUri;
+        audioRef.current.play();
+        audioRef.current.onended = () => setIsAgentSpeaking(false);
+      }
+    } catch (e) {
+      console.error("Agent error", e);
+      toast({
+        title: "AI Error",
+        description: "The AI agent failed to respond.",
+        variant: "destructive"
+      });
+      setIsAgentSpeaking(false);
+    }
+  }, [interviewTopic, toast]);
+
   const handleTranscript = useCallback((text: string) => {
-    setFullTranscript(prev => [...prev, `User: ${text}`]);
-  }, []);
+    const newUserLine = `User: ${text}`;
+    const updatedTranscript = [...fullTranscript, newUserLine];
+    setFullTranscript(updatedTranscript);
+    if (!isAgentSpeaking) {
+      handleAgentResponse(updatedTranscript);
+    }
+  }, [fullTranscript, isAgentSpeaking, handleAgentResponse]);
 
   const handleTranscriptionError = useCallback((error: string) => {
     toast({
@@ -176,11 +208,10 @@ export default function InterviewRoom({ roomName, participantName }: InterviewRo
                     {aiAvatar && <Image src={aiAvatar.imageUrl} alt={aiAvatar.description} data-ai-hint={aiAvatar.imageHint} width={60} height={60} className="rounded-full" />}
                     <div>
                         <h2 className="text-xl font-bold font-headline">AI Interviewer</h2>
-                        <p className="text-sm text-green-400">Listening...</p>
+                        <p className="text-sm text-green-400">{isAgentSpeaking ? 'Speaking...' : 'Listening...'}</p>
                     </div>
                 </div>
                 <div className="flex-1 bg-gray-900 rounded-lg p-3 overflow-y-auto">
-                    <p className="text-sm text-gray-400 mb-4">AI: Hello, let's begin. I will ask you a series of questions related to your chosen topic. Please answer clearly.</p>
                     {fullTranscript.map((line, index) => (
                         <p key={index} className="text-sm mb-2">{line}</p>
                     ))}
@@ -188,6 +219,7 @@ export default function InterviewRoom({ roomName, participantName }: InterviewRo
             </div>
         </div>
       <AudioTranscriptionHandler onTranscript={handleTranscript} onError={handleTranscriptionError} />
+      <audio ref={audioRef} className="hidden" />
     </LiveKitRoom>
   );
 }
