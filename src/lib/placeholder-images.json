@@ -1,3 +1,16 @@
 {
-  "placeholderImages": []
+  "placeholderImages": [
+    {
+      "id": "hero-image",
+      "description": "A person in a professional setting engaged in a video call interview.",
+      "imageUrl": "https://picsum.photos/seed/hero/1200/800",
+      "imageHint": "professional interview"
+    },
+    {
+      "id": "ai-avatar",
+      "description": "A friendly and modern robot avatar for the AI interviewer.",
+      "imageUrl": "https://picsum.photos/seed/ai-avatar/400/400",
+      "imageHint": "robot avatar"
+    }
+  ]
 }

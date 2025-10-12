@@ -30,6 +30,15 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  experimental: {
+    serverComponentsExternalPackages: ['mongoose'],
+  },
+  webpack: (config) => {
+    config.externals = [...config.externals, {
+        "uuid": "uuid"
+    }]
+    return config
+  }
 };
 
 export default nextConfig;
