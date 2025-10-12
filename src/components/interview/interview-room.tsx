@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { LiveKitRoom, VideoConference, useTracks, useRoom } from '@livekit/components-react';
+import { LiveKitRoom, VideoConference, useTracks, useLiveKitRoom } from '@livekit/components-react';
 import { Room, Track, RemoteTrackPublication, RemoteParticipant, RoomEvent, LocalAudioTrack } from 'livekit-client';
 import { generateToken, saveInterviewTranscript } from '@/lib/actions';
 import { realTimeTranscription } from '@/ai/flows/real-time-transcription';
@@ -79,8 +79,8 @@ function AudioTranscriptionHandler({
 }
 
 function AgentAudioPlayer() {
-    const { room } = useRoom();
-    const audioElRef = useRef<HTMLAudioElement | null>(null);
+    const { room } = useLiveKitRoom();
+    const audioElRef = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {
         const onTrackSubscribed = (track: Track, publication: RemoteTrackPublication, participant: RemoteParticipant) => {
@@ -172,11 +172,6 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
 
         const audioBlob = await (await fetch(audioDataUri)).blob();
         const audioArrayBuffer = await audioBlob.arrayBuffer();
-
-        const track = await Room.createAudioTrack(
-            'agent-audio',
-            new AudioContext().createBufferSource().context.createBuffer(1,1,24000)
-        );
         
         const audioTrack = await agentRoomRef.current.localParticipant.publishTrack(audioArrayBuffer, {
             name: 'agent-audio-track',
