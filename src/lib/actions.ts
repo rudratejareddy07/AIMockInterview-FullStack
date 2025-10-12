@@ -4,7 +4,7 @@ import { AccessToken } from 'livekit-server-sdk';
 import { config } from './config';
 import { v4 as uuidv4 } from 'uuid';
 
-export async function generateToken(roomName: string, participantName: string, isAgent: boolean = false) {
+export async function generateToken(roomName: string, participantName: string) {
   if (!config.livekit.apiKey || !config.livekit.apiSecret || !config.livekit.wsUrl) {
     throw new Error('LiveKit server environment variables are not set.');
   }

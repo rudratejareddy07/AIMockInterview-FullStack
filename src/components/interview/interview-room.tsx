@@ -3,8 +3,8 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { LiveKitRoom, VideoConference, useTracks, useLiveKitRoom } from '@livekit/components-react';
-import { Room, Track, RemoteTrackPublication, RemoteParticipant, RoomEvent, LocalAudioTrack } from 'livekit-client';
+import { LiveKitRoom, VideoConference, useTracks } from '@livekit/components-react';
+import { Track } from 'livekit-client';
 import { generateToken, saveInterviewTranscript } from '@/lib/actions';
 import { realTimeTranscription } from '@/ai/flows/real-time-transcription';
 import { interviewAgent } from '@/ai/flows/interview-agent';
@@ -37,6 +37,7 @@ function AudioTranscriptionHandler({
     );
 
     if (localMicTrack?.mediaStream && !isAgentSpeaking) {
+      // If the recorder is already recording, stop it before creating a new one.
       if (mediaRecorderRef.current?.state === 'recording') {
         mediaRecorderRef.current.stop();
       }
@@ -62,8 +63,13 @@ function AudioTranscriptionHandler({
           };
         }
       };
-
+      
+      // Stop any existing recording before starting a new one.
+      if(mediaRecorderRef.current.state === 'recording') {
+        mediaRecorderRef.current.stop();
+      }
       mediaRecorder.start(5000); // Capture 5-second chunks
+
     } else if (mediaRecorderRef.current?.state === 'recording') {
         mediaRecorderRef.current.stop();
     }
@@ -78,55 +84,22 @@ function AudioTranscriptionHandler({
   return null;
 }
 
-function AgentAudioPlayer() {
-    const { room } = useLiveKitRoom();
-    const audioElRef = useRef<HTMLDivElement | null>(null);
-
-    useEffect(() => {
-        const onTrackSubscribed = (track: Track, publication: RemoteTrackPublication, participant: RemoteParticipant) => {
-            if (track.kind === Track.Kind.Audio && participant.identity === 'AI-Interviewer') {
-                const el = track.attach();
-                if (audioElRef.current) {
-                    audioElRef.current.appendChild(el);
-                    el.play().catch(e => console.error("Could not play agent audio", e));
-                }
-            }
-        };
-
-        if (room) {
-            room.on(RoomEvent.TrackSubscribed, onTrackSubscribed);
-        }
-
-        return () => {
-            if (room) {
-                room.off(RoomEvent.TrackSubscribed, onTrackSubscribed);
-            }
-        };
-    }, [room]);
-
-    return <div ref={audioElRef} style={{ display: 'none' }} />;
-}
-
 
 export default function InterviewRoom({ roomName, participantName, interviewTopic }: InterviewRoomProps) {
   const [token, setToken] = useState<string>('');
-  const [agentToken, setAgentToken] = useState<string>('');
   const [fullTranscript, setFullTranscript] = useState<string[]>([]);
   const [isEnding, setIsEnding] = useState(false);
   const [isAgentSpeaking, setIsAgentSpeaking] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
   const aiAvatar = PlaceHolderImages.find((p) => p.id === 'ai-avatar');
-  const agentRoomRef = useRef<Room | null>(null);
-  const currentAudioTrackRef = useRef<LocalAudioTrack | null>(null);
+  const audioPlayerRef = useRef<HTMLAudioElement>(null);
 
   useEffect(() => {
     (async () => {
       try {
         const userJwt = await generateToken(roomName, participantName);
         setToken(userJwt);
-        const agentJwt = await generateToken(roomName, 'AI-Interviewer', true);
-        setAgentToken(agentJwt);
       } catch (e) {
         console.error(e);
         toast({
@@ -138,28 +111,10 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
     })();
   }, [roomName, participantName, toast]);
   
-  useEffect(() => {
-    if (!agentToken || !agentRoomRef.current) return;
-
-    const agentRoom = agentRoomRef.current;
-
-    agentRoom.connect(process.env.NEXT_PUBLIC_LIVEKIT_URL!, agentToken).then(() => {
-      console.log('AI Agent connected to the room');
-    });
-
-    return () => {
-      agentRoom.disconnect();
-    }
-
-  }, [agentToken]);
-
-  useEffect(() => {
-    agentRoomRef.current = new Room();
-  }, []);
 
   const handleAgentResponse = useCallback(
     async (transcriptHistory: string[]) => {
-      if (isAgentSpeaking || !agentRoomRef.current?.localParticipant) return;
+      if (isAgentSpeaking) return;
       setIsAgentSpeaking(true);
 
       try {
@@ -170,16 +125,15 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
         
         setFullTranscript((prev) => [...prev, `AI: ${responseText}`]);
 
-        const audioBlob = await (await fetch(audioDataUri)).blob();
-        const audioArrayBuffer = await audioBlob.arrayBuffer();
-        
-        const audioTrack = await agentRoomRef.current.localParticipant.publishTrack(audioArrayBuffer, {
-            name: 'agent-audio-track',
-            source: Track.Source.Microphone
-        });
-
-        if (audioTrack) {
-            currentAudioTrackRef.current = audioTrack as LocalAudioTrack;
+        if (audioPlayerRef.current && audioDataUri) {
+            audioPlayerRef.current.src = audioDataUri;
+            audioPlayerRef.current.play().catch(e => console.error("Audio playback failed", e));
+            
+            audioPlayerRef.current.onended = () => {
+                setIsAgentSpeaking(false);
+            }
+        } else {
+            setIsAgentSpeaking(false);
         }
 
       } catch (e) {
@@ -189,13 +143,7 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
           description: 'The AI agent failed to respond.',
           variant: 'destructive',
         });
-      } finally {
-        setTimeout(() => {
-            setIsAgentSpeaking(false);
-            if (currentAudioTrackRef.current && agentRoomRef.current?.localParticipant) {
-               agentRoomRef.current.localParticipant.unpublishTrack(currentAudioTrackRef.current);
-            }
-        }, 500)
+        setIsAgentSpeaking(false);
       }
     },
     [interviewTopic, toast, isAgentSpeaking]
@@ -203,13 +151,16 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
   
   // Initial greeting from AI
   useEffect(() => {
-    if (token && agentToken && fullTranscript.length === 0 && agentRoomRef.current?.state === 'connected') {
-      setTimeout(() => {
-         const initialTranscript = [`User: Hi`];
+    if (token && fullTranscript.length === 0) {
+      const timer = setTimeout(() => {
+         // Start with a simple greeting to kick things off.
+         const initialTranscript = [`User: Hi, I'm ready to start.`];
+         setFullTranscript(initialTranscript);
          handleAgentResponse(initialTranscript);
-      }, 3000)
+      }, 3000) // Wait a bit for the user to settle in.
+      return () => clearTimeout(timer);
     }
-  }, [token, agentToken, handleAgentResponse, fullTranscript.length]);
+  }, [token, handleAgentResponse, fullTranscript.length]);
 
 
   const handleTranscript = useCallback(
@@ -218,6 +169,7 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
       const newUserLine = `User: ${text}`;
       setFullTranscript((prev) => {
         const updatedTranscript = [...prev, newUserLine];
+        // Don't wait for state to update, pass the latest transcript directly.
         handleAgentResponse(updatedTranscript);
         return updatedTranscript;
       });
@@ -277,9 +229,8 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
       serverUrl={process.env.NEXT_PUBLIC_LIVEKIT_URL}
       data-lk-theme="default"
       style={{ height: 'calc(100vh - 60px)' }}
-      onDisconnected={() => handleEndInterview()}
+      onDisconnected={handleEndInterview}
     >
-      <AgentAudioPlayer />
       <div className="h-full flex flex-col md:flex-row p-4 gap-4 bg-gray-900 text-white">
         <div className="flex-1 flex flex-col gap-4">
           <div className="flex-1 bg-black rounded-lg overflow-hidden relative">
@@ -329,6 +280,7 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
         </div>
       </div>
       <AudioTranscriptionHandler onTranscript={handleTranscript} onError={handleTranscriptionError} isAgentSpeaking={isAgentSpeaking} />
+      <audio ref={audioPlayerRef} style={{ display: 'none' }} />
     </LiveKitRoom>
   );
 }
