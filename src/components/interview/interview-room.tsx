@@ -37,9 +37,8 @@ function AudioTranscriptionHandler({
     );
 
     if (localMicTrack?.mediaStream && !isAgentSpeaking) {
-      // If the recorder is already recording, stop it before creating a new one.
       if (mediaRecorderRef.current?.state === 'recording') {
-        mediaRecorderRef.current.stop();
+        return; // Already recording
       }
 
       const mediaRecorder = new MediaRecorder(localMicTrack.mediaStream, { mimeType: 'audio/webm' });
@@ -64,10 +63,6 @@ function AudioTranscriptionHandler({
         }
       };
       
-      // Stop any existing recording before starting a new one.
-      if(mediaRecorderRef.current.state === 'recording') {
-        mediaRecorderRef.current.stop();
-      }
       mediaRecorder.start(5000); // Capture 5-second chunks
 
     } else if (mediaRecorderRef.current?.state === 'recording') {
@@ -168,6 +163,9 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
       if (!text || isAgentSpeaking) return;
       const newUserLine = `User: ${text}`;
       setFullTranscript((prev) => {
+        // Avoid adding duplicate transcripts
+        if (prev.at(-1)?.endsWith(text)) return prev;
+
         const updatedTranscript = [...prev, newUserLine];
         // Don't wait for state to update, pass the latest transcript directly.
         handleAgentResponse(updatedTranscript);
