@@ -11,7 +11,8 @@ import { interviewAgent } from '@/ai/flows/interview-agent';
 import { useToast } from '@/hooks/use-toast';
 import Image from 'next/image';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Mic } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 interface InterviewRoomProps {
   roomName: string;
@@ -22,59 +23,66 @@ interface InterviewRoomProps {
 function AudioTranscriptionHandler({
   onTranscript,
   onError,
-  isAgentSpeaking,
+  isRecording,
+  onRecordingStop,
 }: {
   onTranscript: (text: string) => void;
   onError: (error: string) => void;
-  isAgentSpeaking: boolean;
+  isRecording: boolean;
+  onRecordingStop: () => void;
 }) {
   const tracks = useTracks([Track.Source.Microphone]);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
 
   useEffect(() => {
     const localMicTrack = tracks.find(
       (track) => track.source === Track.Source.Microphone && track.participant.isLocal
     );
 
-    if (localMicTrack?.mediaStream && !isAgentSpeaking) {
+    if (isRecording && localMicTrack?.mediaStream) {
       if (mediaRecorderRef.current?.state === 'recording') {
         return; // Already recording
       }
-
+      
       const mediaRecorder = new MediaRecorder(localMicTrack.mediaStream, { mimeType: 'audio/webm' });
       mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
 
-      mediaRecorder.ondataavailable = async (event) => {
+      mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
-          const reader = new FileReader();
-          reader.readAsDataURL(event.data);
-          reader.onloadend = async () => {
-            const base64Audio = reader.result as string;
-            try {
-              const { transcription } = await realTimeTranscription({ audioDataUri: base64Audio });
-              if (transcription) {
-                onTranscript(transcription);
-              }
-            } catch (err) {
-              console.error('Transcription error:', err);
-              onError('Transcription failed. Please check your connection.');
-            }
-          };
+          audioChunksRef.current.push(event.data);
         }
       };
+
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const reader = new FileReader();
+        reader.readAsDataURL(audioBlob);
+        reader.onloadend = async () => {
+          const base64Audio = reader.result as string;
+          try {
+            const { transcription } = await realTimeTranscription({ audioDataUri: base64Audio });
+            if (transcription) {
+              onTranscript(transcription);
+            }
+          } catch (err) {
+            console.error('Transcription error:', err);
+            onError('Transcription failed. Please check your connection.');
+          } finally {
+            audioChunksRef.current = [];
+          }
+        };
+        onRecordingStop();
+      };
       
-      mediaRecorder.start(5000); // Capture 5-second chunks
+      mediaRecorder.start();
 
     } else if (mediaRecorderRef.current?.state === 'recording') {
         mediaRecorderRef.current.stop();
     }
 
-    return () => {
-      if (mediaRecorderRef.current?.state === 'recording') {
-        mediaRecorderRef.current.stop();
-      }
-    };
-  }, [tracks, onTranscript, onError, isAgentSpeaking]);
+  }, [tracks, isRecording, onTranscript, onError, onRecordingStop]);
 
   return null;
 }
@@ -85,6 +93,7 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
   const [fullTranscript, setFullTranscript] = useState<string[]>([]);
   const [isEnding, setIsEnding] = useState(false);
   const [isAgentSpeaking, setIsAgentSpeaking] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
   const aiAvatar = PlaceHolderImages.find((p) => p.id === 'ai-avatar');
@@ -148,11 +157,10 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
   useEffect(() => {
     if (token && fullTranscript.length === 0) {
       const timer = setTimeout(() => {
-         // Start with a simple greeting to kick things off.
          const initialTranscript = [`User: Hi, I'm ready to start.`];
          setFullTranscript(initialTranscript);
          handleAgentResponse(initialTranscript);
-      }, 3000) // Wait a bit for the user to settle in.
+      }, 3000) 
       return () => clearTimeout(timer);
     }
   }, [token, handleAgentResponse, fullTranscript.length]);
@@ -163,11 +171,8 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
       if (!text || isAgentSpeaking) return;
       const newUserLine = `User: ${text}`;
       setFullTranscript((prev) => {
-        // Avoid adding duplicate transcripts
         if (prev.at(-1)?.endsWith(text)) return prev;
-
         const updatedTranscript = [...prev, newUserLine];
-        // Don't wait for state to update, pass the latest transcript directly.
         handleAgentResponse(updatedTranscript);
         return updatedTranscript;
       });
@@ -185,6 +190,10 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
     },
     [toast]
   );
+
+  const handleToggleRecording = () => {
+    setIsRecording(prev => !prev);
+  }
 
   const handleEndInterview = async () => {
     setIsEnding(true);
@@ -235,6 +244,16 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
             <VideoConference />
           </div>
           <div className="bg-gray-800 p-4 rounded-lg flex justify-center items-center gap-4">
+            <Button
+              onClick={handleToggleRecording}
+              disabled={isAgentSpeaking}
+              className={`px-6 py-3 rounded-full text-white font-bold transition-all duration-300 flex items-center gap-2 ${
+                isRecording ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-green-500 hover:bg-green-600'
+              }`}
+            >
+              <Mic className="h-5 w-5" />
+              {isRecording ? 'Stop & Reply' : 'Record Answer'}
+            </Button>
             <button
               onClick={handleEndInterview}
               disabled={isEnding}
@@ -265,7 +284,7 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
             )}
             <div>
               <h2 className="text-xl font-bold font-headline">AI Interviewer</h2>
-              <p className="text-sm text-green-400">{isAgentSpeaking ? 'Speaking...' : 'Listening...'}</p>
+              <p className="text-sm text-green-400">{isAgentSpeaking ? 'Speaking...' : isRecording ? 'Listening...' : 'Ready'}</p>
             </div>
           </div>
           <div className="flex-1 bg-gray-900 rounded-lg p-3 overflow-y-auto">
@@ -277,7 +296,7 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
           </div>
         </div>
       </div>
-      <AudioTranscriptionHandler onTranscript={handleTranscript} onError={handleTranscriptionError} isAgentSpeaking={isAgentSpeaking} />
+      <AudioTranscriptionHandler onTranscript={handleTranscript} onError={handleTranscriptionError} isRecording={isRecording} onRecordingStop={() => setIsRecording(false)} />
       <audio ref={audioPlayerRef} style={{ display: 'none' }} />
     </LiveKitRoom>
   );
