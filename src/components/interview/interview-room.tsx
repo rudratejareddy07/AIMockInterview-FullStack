@@ -34,13 +34,33 @@ function InterviewRoomContent({ roomName, interviewTopic }: InterviewRoomContent
   const { toast } = useToast();
   const aiAvatar = PlaceHolderImages.find((p) => p.id === 'ai-avatar');
   const audioPlayerRef = useRef<HTMLAudioElement>(null);
+  const userAudioStreamRef = useRef<MediaStream | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-  const tracks = useTracks([Track.Source.Microphone]);
-  const localMicTrack = tracks.find(
-    (track) => track.source === Track.Source.Microphone && track.participant.isLocal
-  );
+  
+  useEffect(() => {
+    const getMicPermission = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            userAudioStreamRef.current = stream;
+        } catch(err) {
+            console.error("Error accessing microphone:", err);
+            toast({
+                title: "Microphone Permission Denied",
+                description: "Please allow microphone access in your browser settings to use this feature.",
+                variant: "destructive"
+            });
+        }
+    }
+    getMicPermission();
+
+    // Cleanup: stop the tracks when the component unmounts
+    return () => {
+        userAudioStreamRef.current?.getTracks().forEach(track => track.stop());
+    }
+  }, [toast]);
+
 
   const handleAgentResponse = useCallback(
     async (transcriptHistory: string[]) => {
@@ -149,18 +169,18 @@ function InterviewRoomContent({ roomName, interviewTopic }: InterviewRoomContent
       }
       setIsRecording(false);
     } else {
-      if (!localMicTrack?.mediaStream) {
+      if (!userAudioStreamRef.current) {
         toast({
           title: 'Microphone Error',
-          description: 'Could not access microphone track. Please check permissions and that your mic is not in use by another application.',
+          description: 'Could not access microphone. Please check permissions and that your mic is not in use by another application.',
           variant: 'destructive',
         });
-        console.error('Local microphone track or media stream is not available.');
+        console.error('User media stream is not available.');
         return;
       }
   
       console.log('Starting recording...');
-      const mediaRecorder = new MediaRecorder(localMicTrack.mediaStream, { mimeType: 'audio/webm' });
+      const mediaRecorder = new MediaRecorder(userAudioStreamRef.current, { mimeType: 'audio/webm' });
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
   
