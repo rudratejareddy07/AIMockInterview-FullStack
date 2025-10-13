@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { LiveKitRoom, VideoConference, useTracks } from '@livekit/components-react';
+import { LiveKitRoom, VideoConference } from '@livekit/components-react';
 import { generateToken, saveInterviewTranscript } from '@/lib/actions';
 import { interviewAgent } from '@/ai/flows/interview-agent';
 import { realTimeTranscription } from '@/ai/flows/real-time-transcription';
@@ -11,7 +11,6 @@ import Image from 'next/image';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
 import { Loader2, Mic } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Track } from 'livekit-client';
 
 interface InterviewRoomProps {
   roomName: string;
@@ -30,7 +29,9 @@ function InterviewRoomContent({ roomName, interviewTopic, jobDescription }: Inte
   const [fullTranscript, setFullTranscript] = useState<string[]>([]);
   const [isEnding, setIsEnding] = useState(false);
   const [isAgentSpeaking, setIsAgentSpeaking] = useState(false);
+  const [isUserSpeaking, setIsUserSpeaking] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+
   const router = useRouter();
   const { toast } = useToast();
   const aiAvatar = PlaceHolderImages.find((p) => p.id === 'ai-avatar');
@@ -81,7 +82,7 @@ function InterviewRoomContent({ roomName, interviewTopic, jobDescription }: Inte
   
   const handleTranscript = useCallback(
     (text: string) => {
-      if (!text) return;
+      if (!text || isAgentSpeaking) return;
       console.log('Your transcribed text:', text);
       const newUserLine = `User: ${text}`;
       setFullTranscript((prev) => {
@@ -90,7 +91,7 @@ function InterviewRoomContent({ roomName, interviewTopic, jobDescription }: Inte
         return updatedTranscript;
       });
     },
-    [handleAgentResponse]
+    [handleAgentResponse, isAgentSpeaking]
   );
 
   useEffect(() => {
@@ -121,10 +122,11 @@ function InterviewRoomContent({ roomName, interviewTopic, jobDescription }: Inte
     return () => {
       clearTimeout(timer);
       userAudioStreamRef.current?.getTracks().forEach((track) => track.stop());
-      window.speechSynthesis.cancel();
+      if (window.speechSynthesis.speaking) {
+        window.speechSynthesis.cancel();
+      }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [handleAgentResponse, toast]);
   
   
   const handleTranscriptionError = useCallback(
@@ -134,6 +136,8 @@ function InterviewRoomContent({ roomName, interviewTopic, jobDescription }: Inte
         description: error,
         variant: 'destructive',
       });
+      setIsRecording(false);
+      setIsUserSpeaking(false);
     },
     [toast]
   );
@@ -145,6 +149,7 @@ function InterviewRoomContent({ roomName, interviewTopic, jobDescription }: Inte
         mediaRecorderRef.current.stop();
       }
       setIsRecording(false);
+      setIsUserSpeaking(false);
     } else {
       if (!userAudioStreamRef.current) {
         toast({
@@ -157,6 +162,7 @@ function InterviewRoomContent({ roomName, interviewTopic, jobDescription }: Inte
       }
   
       console.log('Starting recording...');
+      setIsUserSpeaking(true);
       const mediaRecorder = new MediaRecorder(userAudioStreamRef.current, { mimeType: 'audio/webm' });
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
@@ -186,6 +192,8 @@ function InterviewRoomContent({ roomName, interviewTopic, jobDescription }: Inte
             } catch (err) {
                 console.error('Transcription error:', err);
                 handleTranscriptionError('Transcription failed. Please check your connection.');
+            } finally {
+              setIsUserSpeaking(false);
             }
         };
 
@@ -232,7 +240,7 @@ function InterviewRoomContent({ roomName, interviewTopic, jobDescription }: Inte
                 <div className="bg-gray-800 p-4 rounded-lg flex justify-center items-center gap-4">
                     <Button
                     onClick={handleToggleRecording}
-                    disabled={isAgentSpeaking}
+                    disabled={isAgentSpeaking || isUserSpeaking}
                     className={`px-6 py-3 rounded-full text-white font-bold transition-all duration-300 flex items-center gap-2 ${
                         isRecording ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-green-500 hover:bg-green-600'
                     }`}

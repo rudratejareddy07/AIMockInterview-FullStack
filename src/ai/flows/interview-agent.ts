@@ -36,12 +36,12 @@ const interviewAgentFlow = ai.defineFlow(
   async ({interviewTopic, jobDescription, transcript}) => {
     const prompt = `You are an AI interviewer conducting a mock technical interview.
 The interview topic is: ${interviewTopic}.
-${ jobDescription ? `The interview is for a role with the following job description:\n${jobDescription}` : ''}
+${ jobDescription ? `The interview is for a role with the following job description. You MUST base your questions on this description:\n${jobDescription}` : ''}
 
 Here is the transcript so far:
 ${transcript}
 
-Your role is to act as the interviewer. Ask the next logical question based on the conversation and the job description if provided. Keep your questions concise.
+Your role is to act as the interviewer. Ask the next logical question based on the conversation and the job description if provided. Ask only one question at a time. Keep your questions concise.
 Your response should be just the question or comment, without any preamble like "AI:" or "Interviewer:".`;
 
     const {output} = await ai.generate({
