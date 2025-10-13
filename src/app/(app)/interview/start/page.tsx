@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,11 +17,18 @@ const interviewTopics = [
     { name: "System Design", icon: <Network className="h-6 w-6 text-primary" /> }
 ];
 
+export const dynamic = 'force-dynamic';
+
 export default function StartInterviewPage() {
     const [topic, setTopic] = useState<string>("");
     const [jobDescription, setJobDescription] = useState<string>("");
     const router = useRouter();
     const { toast } = useToast();
+    const [isClient, setIsClient] = useState(false);
+
+    useEffect(() => {
+        setIsClient(true);
+    }, []);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -39,6 +46,10 @@ export default function StartInterviewPage() {
         
         router.push(`/interview/new?${topicQuery}${jobDescQuery}`);
     };
+    
+    if (!isClient) {
+        return null;
+    }
 
     return (
         <div>
