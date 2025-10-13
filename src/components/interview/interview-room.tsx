@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { LiveKitRoom, VideoConference, useTracks } from '@livekit/components-react';
+import { LiveKitRoom, VideoConference } from '@livekit/components-react';
 import { generateToken, saveInterviewTranscript } from '@/lib/actions';
 import { interviewAgent } from '@/ai/flows/interview-agent';
 import { realTimeTranscription } from '@/ai/flows/real-time-transcription';
@@ -12,7 +12,6 @@ import Image from 'next/image';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
 import { Loader2, Mic } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Track } from 'livekit-client';
 
 interface InterviewRoomProps {
   roomName: string;
@@ -246,7 +245,7 @@ function InterviewRoomContent({ roomName, interviewTopic, jobDescription }: Inte
                 <div className="bg-gray-800 p-4 rounded-lg flex justify-center items-center gap-4">
                     <Button
                     onClick={handleToggleRecording}
-                    disabled={isAgentSpeaking || isUserSpeaking}
+                    disabled={isAgentSpeaking}
                     className={`px-6 py-3 rounded-full text-white font-bold transition-all duration-300 flex items-center gap-2 ${
                         isRecording ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-green-500 hover:bg-green-600'
                     }`}
