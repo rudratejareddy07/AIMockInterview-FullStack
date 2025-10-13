@@ -11,7 +11,7 @@ import { realTimeTranscription } from '@/ai/flows/real-time-transcription';
 import { useToast } from '@/hooks/use-toast';
 import Image from 'next/image';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
-import { Loader2, Mic, User } from 'lucide-react';
+import { Loader2, Mic } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 
@@ -34,6 +34,7 @@ function InterviewRoomContent({ roomName, interviewTopic, jobDescription }: Inte
   const [isAgentSpeaking, setIsAgentSpeaking] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isUserSpeaking, setIsUserSpeaking] = useState(false);
+
 
   const router = useRouter();
   const { toast } = useToast();
@@ -85,19 +86,25 @@ function InterviewRoomContent({ roomName, interviewTopic, jobDescription }: Inte
     },
     [interviewTopic, jobDescription, toast, isAgentSpeaking]
   );
+
+  useEffect(() => {
+    if (fullTranscript.length > 0) {
+      const lastMessage = fullTranscript[fullTranscript.length - 1];
+      if (lastMessage.startsWith('User:')) {
+        handleAgentResponse(fullTranscript);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fullTranscript]);
   
   const handleTranscript = useCallback(
     (text: string) => {
       if (!text || isAgentSpeaking) return;
       console.log('Your transcribed text:', text);
       const newUserLine = `User: ${text}`;
-      setFullTranscript((prev) => {
-        const updatedTranscript = [...prev, newUserLine];
-        handleAgentResponse(updatedTranscript); 
-        return updatedTranscript;
-      });
+      setFullTranscript((prev) => [...prev, newUserLine]);
     },
-    [handleAgentResponse, isAgentSpeaking]
+    [isAgentSpeaking]
   );
 
  useEffect(() => {
@@ -121,7 +128,6 @@ function InterviewRoomContent({ roomName, interviewTopic, jobDescription }: Inte
     const timer = setTimeout(() => {
         const initialTranscript = [`User: Hi, I'm ready to start.`];
         setFullTranscript(initialTranscript);
-        handleAgentResponse(initialTranscript);
     }, 2000);
 
 
