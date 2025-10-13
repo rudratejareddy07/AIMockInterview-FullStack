@@ -44,7 +44,7 @@ function AudioTranscriptionHandler({
       if (mediaRecorderRef.current?.state === 'recording') {
         return; // Already recording
       }
-      
+      console.log('Starting recording...');
       const mediaRecorder = new MediaRecorder(localMicTrack.mediaStream, { mimeType: 'audio/webm' });
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
@@ -56,6 +56,7 @@ function AudioTranscriptionHandler({
       };
 
       mediaRecorder.onstop = async () => {
+        console.log('Recording stopped, transcribing...');
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
         const reader = new FileReader();
         reader.readAsDataURL(audioBlob);
@@ -63,6 +64,7 @@ function AudioTranscriptionHandler({
           const base64Audio = reader.result as string;
           try {
             const { transcription } = await realTimeTranscription({ audioDataUri: base64Audio });
+             console.log('Transcription received:', transcription);
             if (transcription) {
               onTranscript(transcription);
             }
@@ -119,6 +121,7 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
   const handleAgentResponse = useCallback(
     async (transcriptHistory: string[]) => {
       if (isAgentSpeaking) return;
+      console.log('Agent is thinking...');
       setIsAgentSpeaking(true);
 
       try {
@@ -127,6 +130,7 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
           transcript: transcriptHistory.join('\n'),
         });
         
+        console.log('Agent responded:', responseText);
         setFullTranscript((prev) => [...prev, `AI: ${responseText}`]);
 
         if (audioPlayerRef.current && audioDataUri) {
@@ -134,6 +138,7 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
             audioPlayerRef.current.play().catch(e => console.error("Audio playback failed", e));
             
             audioPlayerRef.current.onended = () => {
+                console.log('Agent finished speaking.');
                 setIsAgentSpeaking(false);
             }
         } else {
@@ -172,7 +177,6 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
       const newUserLine = `User: ${text}`;
       setFullTranscript((prev) => {
         const updatedTranscript = [...prev, newUserLine];
-        // This is the key fix: trigger the agent response after getting the user's transcript
         handleAgentResponse(updatedTranscript); 
         return updatedTranscript;
       });
@@ -235,7 +239,7 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
       token={token}
       serverUrl={process.env.NEXT_PUBLIC_LIVEKIT_URL}
       data-lk-theme="default"
-      style={{ height: 'calc(100vh - 60px)' }}
+      style={{ height: '100vh' }}
       onDisconnected={handleEndInterview}
     >
       <div className="h-full flex flex-col md:flex-row p-4 gap-4 bg-gray-900 text-white">
@@ -301,5 +305,3 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
     </LiveKitRoom>
   );
 }
-
-    
