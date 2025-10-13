@@ -143,42 +143,42 @@ function InterviewRoomContent({ roomName, interviewTopic }: InterviewRoomContent
 
   const handleToggleRecording = () => {
     if (isRecording) {
-      // Stop recording
       console.log('Stopping recording...');
       if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
         mediaRecorderRef.current.stop();
       }
       setIsRecording(false);
     } else {
-      // Start recording
-      if (localMicTrack?.mediaStream) {
-        console.log('Starting recording...');
-        const mediaRecorder = new MediaRecorder(localMicTrack.mediaStream, { mimeType: 'audio/webm' });
-        mediaRecorderRef.current = mediaRecorder;
-        audioChunksRef.current = [];
-
-        mediaRecorder.ondataavailable = (event) => {
-          if (event.data.size > 0) {
-            audioChunksRef.current.push(event.data);
-          }
-        };
-
-        mediaRecorder.onstop = () => {
-          console.log('Recording stopped, creating blob...');
-          const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-          handleRecordingStop(audioBlob);
-          audioChunksRef.current = [];
-        };
-        
-        mediaRecorder.start();
-        setIsRecording(true);
-      } else {
+      if (!localMicTrack?.mediaStream) {
         toast({
           title: 'Microphone Error',
-          description: 'Could not access microphone track. Please check permissions.',
+          description: 'Could not access microphone track. Please check permissions and that your mic is not in use by another application.',
           variant: 'destructive',
         });
+        console.error('Local microphone track or media stream is not available.');
+        return;
       }
+  
+      console.log('Starting recording...');
+      const mediaRecorder = new MediaRecorder(localMicTrack.mediaStream, { mimeType: 'audio/webm' });
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+  
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+  
+      mediaRecorder.onstop = () => {
+        console.log('Recording stopped, creating blob...');
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        handleRecordingStop(audioBlob);
+        audioChunksRef.current = [];
+      };
+      
+      mediaRecorder.start();
+      setIsRecording(true);
     }
   }
 
