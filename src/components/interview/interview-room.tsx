@@ -21,15 +21,11 @@ interface InterviewRoomProps {
 }
 
 function AudioTranscriptionHandler({
-  onTranscript,
-  onError,
   isRecording,
   onRecordingStop,
 }: {
-  onTranscript: (text: string) => void;
-  onError: (error: string) => void;
   isRecording: boolean;
-  onRecordingStop: () => void;
+  onRecordingStop: (audioBlob: Blob) => void;
 }) {
   const tracks = useTracks([Track.Source.Microphone]);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -40,51 +36,35 @@ function AudioTranscriptionHandler({
       (track) => track.source === Track.Source.Microphone && track.participant.isLocal
     );
 
-    if (isRecording && localMicTrack?.mediaStream) {
-      if (mediaRecorderRef.current?.state === 'recording') {
-        return; // Already recording
-      }
-      console.log('Starting recording...');
-      const mediaRecorder = new MediaRecorder(localMicTrack.mediaStream, { mimeType: 'audio/webm' });
-      mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = [];
+    if (localMicTrack?.mediaStream) {
+      if (isRecording && mediaRecorderRef.current?.state !== 'recording') {
+        console.log('Starting recording...');
+        const mediaRecorder = new MediaRecorder(localMicTrack.mediaStream, { mimeType: 'audio/webm' });
+        mediaRecorderRef.current = mediaRecorder;
+        audioChunksRef.current = [];
 
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
-      };
-
-      mediaRecorder.onstop = async () => {
-        console.log('Recording stopped, transcribing...');
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        const reader = new FileReader();
-        reader.readAsDataURL(audioBlob);
-        reader.onloadend = async () => {
-          const base64Audio = reader.result as string;
-          try {
-            const { transcription } = await realTimeTranscription({ audioDataUri: base64Audio });
-             console.log('Transcription received:', transcription);
-            if (transcription) {
-              onTranscript(transcription);
-            }
-          } catch (err) {
-            console.error('Transcription error:', err);
-            onError('Transcription failed. Please check your connection.');
-          } finally {
-            audioChunksRef.current = [];
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            audioChunksRef.current.push(event.data);
           }
         };
-        onRecordingStop();
-      };
-      
-      mediaRecorder.start();
 
-    } else if (mediaRecorderRef.current?.state === 'recording') {
-        mediaRecorderRef.current.stop();
+        mediaRecorder.onstop = () => {
+          console.log('Recording stopped, creating blob...');
+          const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+          onRecordingStop(audioBlob);
+          audioChunksRef.current = [];
+        };
+        
+        mediaRecorder.start();
+
+      } else if (!isRecording && mediaRecorderRef.current?.state === 'recording') {
+          console.log('Stopping recording...');
+          mediaRecorderRef.current.stop();
+      }
     }
 
-  }, [tracks, isRecording, onTranscript, onError, onRecordingStop]);
+  }, [tracks, isRecording, onRecordingStop]);
 
   return null;
 }
@@ -174,6 +154,7 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
   const handleTranscript = useCallback(
     (text: string) => {
       if (!text || isAgentSpeaking) return;
+      console.log('Your transcribed text:', text);
       const newUserLine = `User: ${text}`;
       setFullTranscript((prev) => {
         const updatedTranscript = [...prev, newUserLine];
@@ -198,6 +179,25 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
   const handleToggleRecording = () => {
     setIsRecording(prev => !prev);
   }
+
+  const handleRecordingStop = useCallback((audioBlob: Blob) => {
+      console.log('Transcribing audio blob...');
+      const reader = new FileReader();
+      reader.readAsDataURL(audioBlob);
+      reader.onloadend = async () => {
+        const base64Audio = reader.result as string;
+        try {
+          const { transcription } = await realTimeTranscription({ audioDataUri: base64Audio });
+          if (transcription) {
+            handleTranscript(transcription);
+          }
+        } catch (err) {
+          console.error('Transcription error:', err);
+          handleTranscriptionError('Transcription failed. Please check your connection.');
+        }
+      };
+  }, [handleTranscript, handleTranscriptionError]);
+
 
   const handleEndInterview = async () => {
     setIsEnding(true);
@@ -300,7 +300,7 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
           </div>
         </div>
       </div>
-      <AudioTranscriptionHandler onTranscript={handleTranscript} onError={handleTranscriptionError} isRecording={isRecording} onRecordingStop={() => setIsRecording(false)} />
+      <AudioTranscriptionHandler isRecording={isRecording} onRecordingStop={handleRecordingStop} />
       <audio ref={audioPlayerRef} style={{ display: 'none' }} />
     </LiveKitRoom>
   );
