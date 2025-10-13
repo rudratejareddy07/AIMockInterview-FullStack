@@ -19,8 +19,13 @@ interface InterviewRoomProps {
   interviewTopic: string;
 }
 
-export default function InterviewRoom({ roomName, participantName, interviewTopic }: InterviewRoomProps) {
-  const [token, setToken] = useState<string>('');
+interface InterviewRoomContentProps {
+    roomName: string;
+    interviewTopic: string;
+}
+
+
+function InterviewRoomContent({ roomName, interviewTopic }: InterviewRoomContentProps) {
   const [fullTranscript, setFullTranscript] = useState<string[]>([]);
   const [isEnding, setIsEnding] = useState(false);
   const [isAgentSpeaking, setIsAgentSpeaking] = useState(false);
@@ -36,22 +41,6 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
   const localMicTrack = tracks.find(
     (track) => track.source === Track.Source.Microphone && track.participant.isLocal
   );
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const userJwt = await generateToken(roomName, participantName);
-        setToken(userJwt);
-      } catch (e) {
-        console.error(e);
-        toast({
-          title: 'Error',
-          description: 'Failed to connect to the interview room.',
-          variant: 'destructive',
-        });
-      }
-    })();
-  }, [roomName, participantName, toast]);
 
   const handleAgentResponse = useCallback(
     async (transcriptHistory: string[]) => {
@@ -95,7 +84,7 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
   
   // Initial greeting from AI
   useEffect(() => {
-    if (token && fullTranscript.length === 0) {
+    if (fullTranscript.length === 0) {
       const timer = setTimeout(() => {
          // This simulates the user starting the conversation, triggering the agent's first question.
          const initialTranscript = [`User: Hi, I'm ready to start.`];
@@ -104,12 +93,12 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
       }, 3000) 
       return () => clearTimeout(timer);
     }
-  }, [token, handleAgentResponse, fullTranscript.length]);
+  }, [handleAgentResponse, fullTranscript.length]);
 
 
   const handleTranscript = useCallback(
     (text: string) => {
-      if (!text || isAgentSpeaking) return;
+      if (!text) return;
       console.log('Your transcribed text:', text);
       const newUserLine = `User: ${text}`;
       setFullTranscript((prev) => {
@@ -118,7 +107,7 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
         return updatedTranscript;
       });
     },
-    [isAgentSpeaking, handleAgentResponse]
+    [handleAgentResponse]
   );
 
   const handleTranscriptionError = useCallback(
@@ -218,6 +207,92 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
     }
   };
 
+  return (
+    <>
+        <div className="h-full flex flex-col md:flex-row p-4 gap-4 bg-gray-900 text-white">
+            <div className="flex-1 flex flex-col gap-4">
+                <div className="flex-1 bg-black rounded-lg overflow-hidden relative">
+                    <VideoConference />
+                </div>
+                <div className="bg-gray-800 p-4 rounded-lg flex justify-center items-center gap-4">
+                    <Button
+                    onClick={handleToggleRecording}
+                    disabled={isAgentSpeaking}
+                    className={`px-6 py-3 rounded-full text-white font-bold transition-all duration-300 flex items-center gap-2 ${
+                        isRecording ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-green-500 hover:bg-green-600'
+                    }`}
+                    >
+                    <Mic className="h-5 w-5" />
+                    {isRecording ? 'Stop & Reply' : 'Record Answer'}
+                    </Button>
+                    <button
+                    onClick={handleEndInterview}
+                    disabled={isEnding}
+                    className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition-colors disabled:bg-gray-500 flex items-center gap-2"
+                    >
+                    {isEnding ? (
+                        <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Ending...
+                        </>
+                    ) : (
+                        'End Interview'
+                    )}
+                    </button>
+                </div>
+            </div>
+            <div className="w-full md:w-1/3 xl:w-1/4 bg-gray-800 rounded-lg p-4 flex flex-col">
+                <div className="flex items-center gap-4 mb-4">
+                    {aiAvatar && (
+                    <Image
+                        src={aiAvatar.imageUrl}
+                        alt={aiAvatar.description}
+                        data-ai-hint={aiAvatar.imageHint}
+                        width={60}
+                        height={60}
+                        className="rounded-full"
+                    />
+                    )}
+                    <div>
+                    <h2 className="text-xl font-bold font-headline">AI Interviewer</h2>
+                    <p className="text-sm text-green-400">{isAgentSpeaking ? 'Speaking...' : isRecording ? 'Listening...' : 'Ready'}</p>
+                    </div>
+                </div>
+                <div className="flex-1 bg-gray-900 rounded-lg p-3 overflow-y-auto">
+                    {fullTranscript.map((line, index) => (
+                    <p key={index} className="text-sm mb-2">
+                        {line}
+                    </p>
+                    ))}
+                </div>
+            </div>
+        </div>
+        <audio ref={audioPlayerRef} style={{ display: 'none' }} />
+    </>
+  );
+}
+
+
+export default function InterviewRoom({ roomName, participantName, interviewTopic }: InterviewRoomProps) {
+  const [token, setToken] = useState<string>('');
+  const { toast } = useToast();
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const userJwt = await generateToken(roomName, participantName);
+        setToken(userJwt);
+      } catch (e) {
+        console.error(e);
+        toast({
+          title: 'Error',
+          description: 'Failed to connect to the interview room.',
+          variant: 'destructive',
+        });
+      }
+    })();
+  }, [roomName, participantName, toast]);
+
   if (token === '') {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-900 text-white">
@@ -235,67 +310,8 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
       serverUrl={process.env.NEXT_PUBLIC_LIVEKIT_URL}
       data-lk-theme="default"
       style={{ height: '100vh' }}
-      onDisconnected={handleEndInterview}
     >
-      <div className="h-full flex flex-col md:flex-row p-4 gap-4 bg-gray-900 text-white">
-        <div className="flex-1 flex flex-col gap-4">
-          <div className="flex-1 bg-black rounded-lg overflow-hidden relative">
-            <VideoConference />
-          </div>
-          <div className="bg-gray-800 p-4 rounded-lg flex justify-center items-center gap-4">
-            <Button
-              onClick={handleToggleRecording}
-              disabled={isAgentSpeaking}
-              className={`px-6 py-3 rounded-full text-white font-bold transition-all duration-300 flex items-center gap-2 ${
-                isRecording ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-green-500 hover:bg-green-600'
-              }`}
-            >
-              <Mic className="h-5 w-5" />
-              {isRecording ? 'Stop & Reply' : 'Record Answer'}
-            </Button>
-            <button
-              onClick={handleEndInterview}
-              disabled={isEnding}
-              className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition-colors disabled:bg-gray-500 flex items-center gap-2"
-            >
-              {isEnding ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Ending...
-                </>
-              ) : (
-                'End Interview'
-              )}
-            </button>
-          </div>
-        </div>
-        <div className="w-full md:w-1/3 xl:w-1/4 bg-gray-800 rounded-lg p-4 flex flex-col">
-          <div className="flex items-center gap-4 mb-4">
-            {aiAvatar && (
-              <Image
-                src={aiAvatar.imageUrl}
-                alt={aiAvatar.description}
-                data-ai-hint={aiAvatar.imageHint}
-                width={60}
-                height={60}
-                className="rounded-full"
-              />
-            )}
-            <div>
-              <h2 className="text-xl font-bold font-headline">AI Interviewer</h2>
-              <p className="text-sm text-green-400">{isAgentSpeaking ? 'Speaking...' : isRecording ? 'Listening...' : 'Ready'}</p>
-            </div>
-          </div>
-          <div className="flex-1 bg-gray-900 rounded-lg p-3 overflow-y-auto">
-            {fullTranscript.map((line, index) => (
-              <p key={index} className="text-sm mb-2">
-                {line}
-              </p>
-            ))}
-          </div>
-        </div>
-      </div>
-      <audio ref={audioPlayerRef} style={{ display: 'none' }} />
+      <InterviewRoomContent roomName={roomName} interviewTopic={interviewTopic} />
     </LiveKitRoom>
   );
 }
