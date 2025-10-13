@@ -18,13 +18,26 @@ const GenerateInterviewFeedbackInputSchema = z.object({
 });
 export type GenerateInterviewFeedbackInput = z.infer<typeof GenerateInterviewFeedbackInputSchema>;
 
+const CategoryRatingSchema = z.object({
+  rating: z.number().describe('The rating for this category, from 1 to 10.'),
+  feedback: z.string().describe('Specific feedback for this category.'),
+});
+
 const GenerateInterviewFeedbackOutputSchema = z.object({
-  rating: z.number().describe("A rating of the user's performance on a scale of 1 to 10."),
-  feedbackReport: z
-    .string()
-    .describe(
-      'A detailed performance report, highlighting strengths, weaknesses, and areas for improvement based on technical accuracy, verbal fluency, and soft skills.'
+  overallRating: z
+    .number()
+    .describe("A rating of the user's performance on a scale of 1 to 10."),
+  categoryRatings: z.object({
+    technical: CategoryRatingSchema.describe(
+      'Rating and feedback on technical accuracy and knowledge.'
     ),
+    communication: CategoryRatingSchema.describe(
+      'Rating and feedback on verbal fluency, clarity, and soft skills.'
+    ),
+    behavioral: CategoryRatingSchema.describe(
+      'Rating and feedback on problem-solving approach, confidence, and STAR method usage if applicable.'
+    ),
+  }),
 });
 export type GenerateInterviewFeedbackOutput = z.infer<typeof GenerateInterviewFeedbackOutputSchema>;
 
@@ -38,7 +51,10 @@ const generateInterviewFeedbackPrompt = ai.definePrompt({
   name: 'generateInterviewFeedbackPrompt',
   input: {schema: GenerateInterviewFeedbackInputSchema},
   output: {schema: GenerateInterviewFeedbackOutputSchema},
-  prompt: `You are an AI interview feedback generator. Analyze the following interview transcript and provide a detailed performance report, highlighting strengths, weaknesses, and areas for improvement based on technical accuracy, verbal fluency, and soft skills. Also, provide a rating of the user's performance on a scale of 1 to 10.\n\nInterview Transcript: {{{interviewTranscript}}}`,
+  prompt: `You are an AI interview feedback generator. Analyze the following interview transcript. Provide a detailed performance report with an overall rating and categorized ratings for technical skills, communication, and behavioral aspects. For each category, provide a rating from 1 to 10 and specific, constructive feedback.
+
+Interview Transcript:
+{{{interviewTranscript}}}`,
 });
 
 const generateInterviewFeedbackFlow = ai.defineFlow(
