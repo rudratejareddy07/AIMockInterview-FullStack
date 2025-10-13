@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { LiveKitRoom, VideoConference } from '@livekit/components-react';
+import { LiveKitRoom, VideoConference, useTracks } from '@livekit/components-react';
 import { generateToken, saveInterviewTranscript } from '@/lib/actions';
 import { interviewAgent } from '@/ai/flows/interview-agent';
 import { realTimeTranscription } from '@/ai/flows/real-time-transcription';
@@ -12,6 +12,7 @@ import Image from 'next/image';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
 import { Loader2, Mic } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Track } from 'livekit-client';
 
 interface InterviewRoomProps {
   roomName: string;
@@ -30,8 +31,8 @@ function InterviewRoomContent({ roomName, interviewTopic, jobDescription }: Inte
   const [fullTranscript, setFullTranscript] = useState<string[]>([]);
   const [isEnding, setIsEnding] = useState(false);
   const [isAgentSpeaking, setIsAgentSpeaking] = useState(false);
-  const [isUserSpeaking, setIsUserSpeaking] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [isUserSpeaking, setIsUserSpeaking] = useState(false);
 
   const router = useRouter();
   const { toast } = useToast();
@@ -57,7 +58,7 @@ function InterviewRoomContent({ roomName, interviewTopic, jobDescription }: Inte
         console.log('Agent responded:', responseText);
         setFullTranscript((prev) => [...prev, `AI: ${responseText}`]);
 
-        // Cancel any previous speech synthesis
+        // Cancel any previous speech synthesis to prevent overlap
         window.speechSynthesis.cancel();
         
         const utterance = new SpeechSynthesisUtterance(responseText);
@@ -115,12 +116,11 @@ function InterviewRoomContent({ roomName, interviewTopic, jobDescription }: Inte
       }
     };
     getMicPermission();
-    
-    // Initial greeting from AI
+
     const timer = setTimeout(() => {
-        const initialTranscript = [`User: Hi, I'm ready to start.`];
-        setFullTranscript(initialTranscript);
-        handleAgentResponse(initialTranscript);
+      const initialTranscript = [`User: Hi, I'm ready to start.`];
+      setFullTranscript(initialTranscript);
+      handleAgentResponse(initialTranscript);
     }, 2000); 
 
     // Cleanup
@@ -131,7 +131,7 @@ function InterviewRoomContent({ roomName, interviewTopic, jobDescription }: Inte
         window.speechSynthesis.cancel();
       }
     };
-    // Eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   
   
@@ -343,5 +343,3 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
     </LiveKitRoom>
   );
 }
-
-    
