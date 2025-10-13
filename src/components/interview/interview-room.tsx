@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -56,6 +57,9 @@ function InterviewRoomContent({ roomName, interviewTopic, jobDescription }: Inte
         console.log('Agent responded:', responseText);
         setFullTranscript((prev) => [...prev, `AI: ${responseText}`]);
 
+        // Cancel any previous speech synthesis
+        window.speechSynthesis.cancel();
+        
         const utterance = new SpeechSynthesisUtterance(responseText);
         utterance.onend = () => {
             console.log('Agent finished speaking.');
@@ -127,7 +131,8 @@ function InterviewRoomContent({ roomName, interviewTopic, jobDescription }: Inte
         window.speechSynthesis.cancel();
       }
     };
-  }, [handleAgentResponse, toast]);
+    // Eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   
   
   const handleTranscriptionError = useCallback(
@@ -338,3 +343,5 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
     </LiveKitRoom>
   );
 }
+
+    
