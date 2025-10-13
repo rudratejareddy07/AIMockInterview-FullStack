@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -20,56 +19,6 @@ interface InterviewRoomProps {
   interviewTopic: string;
 }
 
-function AudioTranscriptionHandler({
-  isRecording,
-  onRecordingStop,
-}: {
-  isRecording: boolean;
-  onRecordingStop: (audioBlob: Blob) => void;
-}) {
-  const tracks = useTracks([Track.Source.Microphone]);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
-
-  useEffect(() => {
-    const localMicTrack = tracks.find(
-      (track) => track.source === Track.Source.Microphone && track.participant.isLocal
-    );
-
-    if (localMicTrack?.mediaStream) {
-      if (isRecording && mediaRecorderRef.current?.state !== 'recording') {
-        console.log('Starting recording...');
-        const mediaRecorder = new MediaRecorder(localMicTrack.mediaStream, { mimeType: 'audio/webm' });
-        mediaRecorderRef.current = mediaRecorder;
-        audioChunksRef.current = [];
-
-        mediaRecorder.ondataavailable = (event) => {
-          if (event.data.size > 0) {
-            audioChunksRef.current.push(event.data);
-          }
-        };
-
-        mediaRecorder.onstop = () => {
-          console.log('Recording stopped, creating blob...');
-          const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-          onRecordingStop(audioBlob);
-          audioChunksRef.current = [];
-        };
-        
-        mediaRecorder.start();
-
-      } else if (!isRecording && mediaRecorderRef.current?.state === 'recording') {
-          console.log('Stopping recording...');
-          mediaRecorderRef.current.stop();
-      }
-    }
-
-  }, [tracks, isRecording, onRecordingStop]);
-
-  return null;
-}
-
-
 export default function InterviewRoom({ roomName, participantName, interviewTopic }: InterviewRoomProps) {
   const [token, setToken] = useState<string>('');
   const [fullTranscript, setFullTranscript] = useState<string[]>([]);
@@ -80,6 +29,13 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
   const { toast } = useToast();
   const aiAvatar = PlaceHolderImages.find((p) => p.id === 'ai-avatar');
   const audioPlayerRef = useRef<HTMLAudioElement>(null);
+
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const tracks = useTracks([Track.Source.Microphone]);
+  const localMicTrack = tracks.find(
+    (track) => track.source === Track.Source.Microphone && track.participant.isLocal
+  );
 
   useEffect(() => {
     (async () => {
@@ -96,7 +52,6 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
       }
     })();
   }, [roomName, participantName, toast]);
-  
 
   const handleAgentResponse = useCallback(
     async (transcriptHistory: string[]) => {
@@ -142,6 +97,7 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
   useEffect(() => {
     if (token && fullTranscript.length === 0) {
       const timer = setTimeout(() => {
+         // This simulates the user starting the conversation, triggering the agent's first question.
          const initialTranscript = [`User: Hi, I'm ready to start.`];
          setFullTranscript(initialTranscript);
          handleAgentResponse(initialTranscript);
@@ -176,10 +132,6 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
     [toast]
   );
 
-  const handleToggleRecording = () => {
-    setIsRecording(prev => !prev);
-  }
-
   const handleRecordingStop = useCallback((audioBlob: Blob) => {
       console.log('Transcribing audio blob...');
       const reader = new FileReader();
@@ -190,6 +142,8 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
           const { transcription } = await realTimeTranscription({ audioDataUri: base64Audio });
           if (transcription) {
             handleTranscript(transcription);
+          } else {
+             console.log("Transcription returned empty.");
           }
         } catch (err) {
           console.error('Transcription error:', err);
@@ -197,6 +151,47 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
         }
       };
   }, [handleTranscript, handleTranscriptionError]);
+
+  const handleToggleRecording = () => {
+    if (isRecording) {
+      // Stop recording
+      console.log('Stopping recording...');
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+        mediaRecorderRef.current.stop();
+      }
+      setIsRecording(false);
+    } else {
+      // Start recording
+      if (localMicTrack?.mediaStream) {
+        console.log('Starting recording...');
+        const mediaRecorder = new MediaRecorder(localMicTrack.mediaStream, { mimeType: 'audio/webm' });
+        mediaRecorderRef.current = mediaRecorder;
+        audioChunksRef.current = [];
+
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            audioChunksRef.current.push(event.data);
+          }
+        };
+
+        mediaRecorder.onstop = () => {
+          console.log('Recording stopped, creating blob...');
+          const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+          handleRecordingStop(audioBlob);
+          audioChunksRef.current = [];
+        };
+        
+        mediaRecorder.start();
+        setIsRecording(true);
+      } else {
+        toast({
+          title: 'Microphone Error',
+          description: 'Could not access microphone track. Please check permissions.',
+          variant: 'destructive',
+        });
+      }
+    }
+  }
 
 
   const handleEndInterview = async () => {
@@ -300,7 +295,6 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
           </div>
         </div>
       </div>
-      <AudioTranscriptionHandler isRecording={isRecording} onRecordingStop={handleRecordingStop} />
       <audio ref={audioPlayerRef} style={{ display: 'none' }} />
     </LiveKitRoom>
   );
