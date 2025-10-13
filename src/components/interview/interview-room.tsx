@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { LiveKitRoom, VideoConference } from '@livekit/components-react';
+import { LiveKitRoom, VideoConference, useTracks } from '@livekit/components-react';
 import { generateToken, saveInterviewTranscript } from '@/lib/actions';
 import { interviewAgent } from '@/ai/flows/interview-agent';
 import { realTimeTranscription } from '@/ai/flows/real-time-transcription';
@@ -11,6 +11,7 @@ import Image from 'next/image';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
 import { Loader2, Mic } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Track } from 'livekit-client';
 
 interface InterviewRoomProps {
   roomName: string;
@@ -33,11 +34,11 @@ function InterviewRoomContent({ roomName, interviewTopic, jobDescription }: Inte
   const router = useRouter();
   const { toast } = useToast();
   const aiAvatar = PlaceHolderImages.find((p) => p.id === 'ai-avatar');
-  const userAudioStreamRef = useRef<MediaStream | null>(null);
 
+  const userAudioStreamRef = useRef<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-
+  
   const handleAgentResponse = useCallback(
     async (transcriptHistory: string[]) => {
       if (isAgentSpeaking) return;
@@ -77,7 +78,7 @@ function InterviewRoomContent({ roomName, interviewTopic, jobDescription }: Inte
     },
     [interviewTopic, jobDescription, toast, isAgentSpeaking]
   );
-
+  
   const handleTranscript = useCallback(
     (text: string) => {
       if (!text) return;
@@ -91,7 +92,7 @@ function InterviewRoomContent({ roomName, interviewTopic, jobDescription }: Inte
     },
     [handleAgentResponse]
   );
-  
+
   useEffect(() => {
     const getMicPermission = async () => {
       try {
@@ -122,7 +123,8 @@ function InterviewRoomContent({ roomName, interviewTopic, jobDescription }: Inte
       userAudioStreamRef.current?.getTracks().forEach((track) => track.stop());
       window.speechSynthesis.cancel();
     };
-  }, [toast, handleAgentResponse]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   
   
   const handleTranscriptionError = useCallback(
@@ -136,7 +138,7 @@ function InterviewRoomContent({ roomName, interviewTopic, jobDescription }: Inte
     [toast]
   );
   
-  const handleToggleRecording = () => {
+  const handleToggleRecording = async () => {
     if (isRecording) {
       console.log('Stopping recording...');
       if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
