@@ -4,8 +4,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { LiveKitRoom, VideoConference } from '@livekit/components-react';
 import { generateToken, saveInterviewTranscript } from '@/lib/actions';
-import { realTimeTranscription } from '@/ai/flows/real-time-transcription';
 import { interviewAgent } from '@/ai/flows/interview-agent';
+import { realTimeTranscription } from '@/ai/flows/real-time-transcription';
 import { useToast } from '@/hooks/use-toast';
 import Image from 'next/image';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
@@ -101,15 +101,15 @@ function InterviewRoomContent({ roomName, interviewTopic }: InterviewRoomContent
   
   // Initial greeting from AI
   useEffect(() => {
-    if (fullTranscript.length === 0) {
-      const timer = setTimeout(() => {
-         const initialTranscript = [`User: Hi, I'm ready to start.`];
-         setFullTranscript(initialTranscript);
-         handleAgentResponse(initialTranscript);
-      }, 3000) 
-      return () => clearTimeout(timer);
+    const initialGreeting = () => {
+        const initialTranscript = [`User: Hi, I'm ready to start.`];
+        setFullTranscript(initialTranscript);
+        handleAgentResponse(initialTranscript);
     }
-  }, [handleAgentResponse, fullTranscript.length]);
+    const timer = setTimeout(initialGreeting, 2000); // Give it a moment to connect
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
 
   const handleTranscript = useCallback(
@@ -136,26 +136,6 @@ function InterviewRoomContent({ roomName, interviewTopic }: InterviewRoomContent
     },
     [toast]
   );
-
-  const handleRecordingStop = useCallback((audioBlob: Blob) => {
-      console.log('Transcribing audio blob...');
-      const reader = new FileReader();
-      reader.readAsDataURL(audioBlob);
-      reader.onloadend = async () => {
-        const base64Audio = reader.result as string;
-        try {
-          const { transcription } = await realTimeTranscription({ audioDataUri: base64Audio });
-          if (transcription) {
-            handleTranscript(transcription);
-          } else {
-             console.log("Transcription returned empty.");
-          }
-        } catch (err) {
-          console.error('Transcription error:', err);
-          handleTranscriptionError('Transcription failed. Please check your connection.');
-        }
-      };
-  }, [handleTranscript, handleTranscriptionError]);
   
   const handleToggleRecording = () => {
     if (isRecording) {
@@ -189,7 +169,25 @@ function InterviewRoomContent({ roomName, interviewTopic }: InterviewRoomContent
       mediaRecorder.onstop = () => {
         console.log('Recording stopped, creating blob...');
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        handleRecordingStop(audioBlob);
+        
+        const reader = new FileReader();
+        reader.readAsDataURL(audioBlob);
+        reader.onloadend = async () => {
+            const base64Audio = reader.result as string;
+            try {
+                console.log('Transcribing audio blob...');
+                const { transcription } = await realTimeTranscription({ audioDataUri: base64Audio });
+                if (transcription) {
+                    handleTranscript(transcription);
+                } else {
+                    console.log("Transcription returned empty.");
+                }
+            } catch (err) {
+                console.error('Transcription error:', err);
+                handleTranscriptionError('Transcription failed. Please check your connection.');
+            }
+        };
+
         audioChunksRef.current = [];
       };
       
