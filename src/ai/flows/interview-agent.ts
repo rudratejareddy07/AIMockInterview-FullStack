@@ -50,7 +50,7 @@ Your response should be just the question or comment, without any preamble like 
 
     const {output: textResponse, media } = await ai.generate({
       prompt: prompt,
-      model: 'googleai/gemini-2.5-flash-preview-tts',
+      model: 'googleai/gemini-2.5-flash',
       output: {
         schema: z.object({
           responseText: z.string(),
