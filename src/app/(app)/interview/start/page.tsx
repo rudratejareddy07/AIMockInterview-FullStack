@@ -8,7 +8,6 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
 import { Code, Database, Network, BrainCircuit } from "lucide-react";
-import { v4 as uuidv4 } from 'uuid';
 import { useToast } from "@/hooks/use-toast";
 
 const interviewTopics = [
@@ -35,11 +34,10 @@ export default function StartInterviewPage() {
             return;
         }
 
-        const newInterviewId = uuidv4();
         const topicQuery = `topic=${encodeURIComponent(topic)}`;
         const jobDescQuery = jobDescription ? `&jobDescription=${encodeURIComponent(jobDescription)}` : '';
         
-        router.push(`/interview/${newInterviewId}?${topicQuery}${jobDescQuery}`);
+        router.push(`/interview/new?${topicQuery}${jobDescQuery}`);
     };
 
     return (
