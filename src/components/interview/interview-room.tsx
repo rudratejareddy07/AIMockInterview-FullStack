@@ -16,14 +16,16 @@ interface InterviewRoomProps {
   roomName: string;
   participantName: string;
   interviewTopic: string;
+  jobDescription?: string;
 }
 
 interface InterviewRoomContentProps {
   roomName: string;
   interviewTopic: string;
+  jobDescription?: string;
 }
 
-function InterviewRoomContent({ roomName, interviewTopic }: InterviewRoomContentProps) {
+function InterviewRoomContent({ roomName, interviewTopic, jobDescription }: InterviewRoomContentProps) {
   const [fullTranscript, setFullTranscript] = useState<string[]>([]);
   const [isEnding, setIsEnding] = useState(false);
   const [isAgentSpeaking, setIsAgentSpeaking] = useState(false);
@@ -31,34 +33,10 @@ function InterviewRoomContent({ roomName, interviewTopic }: InterviewRoomContent
   const router = useRouter();
   const { toast } = useToast();
   const aiAvatar = PlaceHolderImages.find((p) => p.id === 'ai-avatar');
-
   const userAudioStreamRef = useRef<MediaStream | null>(null);
+
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-
-  useEffect(() => {
-    const getMicPermission = async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        userAudioStreamRef.current = stream;
-      } catch (err) {
-        console.error('Error accessing microphone:', err);
-        toast({
-          title: 'Microphone Permission Denied',
-          description:
-            'Please allow microphone access in your browser settings to use this feature.',
-          variant: 'destructive',
-        });
-      }
-    };
-    getMicPermission();
-
-    // Cleanup: stop the tracks when the component unmounts
-    return () => {
-      userAudioStreamRef.current?.getTracks().forEach((track) => track.stop());
-      window.speechSynthesis.cancel();
-    };
-  }, [toast]);
 
   const handleAgentResponse = useCallback(
     async (transcriptHistory: string[]) => {
@@ -69,6 +47,7 @@ function InterviewRoomContent({ roomName, interviewTopic }: InterviewRoomContent
       try {
         const { responseText } = await interviewAgent({
           interviewTopic,
+          jobDescription,
           transcript: transcriptHistory.join('\n'),
         });
         
@@ -96,21 +75,8 @@ function InterviewRoomContent({ roomName, interviewTopic }: InterviewRoomContent
         setIsAgentSpeaking(false);
       }
     },
-    [interviewTopic, toast, isAgentSpeaking]
+    [interviewTopic, jobDescription, toast, isAgentSpeaking]
   );
-  
-  // Initial greeting from AI
-  useEffect(() => {
-    const initialGreeting = () => {
-        const initialTranscript = [`User: Hi, I'm ready to start.`];
-        setFullTranscript(initialTranscript);
-        handleAgentResponse(initialTranscript);
-    }
-    const timer = setTimeout(initialGreeting, 2000); // Give it a moment to connect
-    return () => clearTimeout(timer);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
 
   const handleTranscript = useCallback(
     (text: string) => {
@@ -125,7 +91,40 @@ function InterviewRoomContent({ roomName, interviewTopic }: InterviewRoomContent
     },
     [handleAgentResponse]
   );
+  
+  useEffect(() => {
+    const getMicPermission = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        userAudioStreamRef.current = stream;
+      } catch (err) {
+        console.error('Error accessing microphone:', err);
+        toast({
+          title: 'Microphone Permission Denied',
+          description:
+            'Please allow microphone access in your browser settings to use this feature.',
+          variant: 'destructive',
+        });
+      }
+    };
+    getMicPermission();
+    
+    // Initial greeting from AI
+    const timer = setTimeout(() => {
+        const initialTranscript = [`User: Hi, I'm ready to start.`];
+        setFullTranscript(initialTranscript);
+        handleAgentResponse(initialTranscript);
+    }, 2000); 
 
+    // Cleanup
+    return () => {
+      clearTimeout(timer);
+      userAudioStreamRef.current?.getTracks().forEach((track) => track.stop());
+      window.speechSynthesis.cancel();
+    };
+  }, [toast, handleAgentResponse]);
+  
+  
   const handleTranscriptionError = useCallback(
     (error: string) => {
       toast({
@@ -286,7 +285,7 @@ function InterviewRoomContent({ roomName, interviewTopic }: InterviewRoomContent
 }
 
 
-export default function InterviewRoom({ roomName, participantName, interviewTopic }: InterviewRoomProps) {
+export default function InterviewRoom({ roomName, participantName, interviewTopic, jobDescription }: InterviewRoomProps) {
   const [token, setToken] = useState<string>('');
   const { toast } = useToast();
 
@@ -324,7 +323,7 @@ export default function InterviewRoom({ roomName, participantName, interviewTopi
       data-lk-theme="default"
       style={{ height: '100vh' }}
     >
-      <InterviewRoomContent roomName={roomName} interviewTopic={interviewTopic} />
+      <InterviewRoomContent roomName={roomName} interviewTopic={interviewTopic} jobDescription={jobDescription} />
     </LiveKitRoom>
   );
 }
