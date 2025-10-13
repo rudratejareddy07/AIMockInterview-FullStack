@@ -3,15 +3,17 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { LiveKitRoom, VideoConference } from '@livekit/components-react';
+import { LiveKitRoom, RoomAudioRenderer, useTracks, VideoConference } from '@livekit/components-react';
+import { Track } from 'livekit-client';
 import { generateToken, saveInterviewTranscript } from '@/lib/actions';
 import { interviewAgent } from '@/ai/flows/interview-agent';
 import { realTimeTranscription } from '@/ai/flows/real-time-transcription';
 import { useToast } from '@/hooks/use-toast';
 import Image from 'next/image';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
-import { Loader2, Mic } from 'lucide-react';
+import { Loader2, Mic, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 
 interface InterviewRoomProps {
   roomName: string;
@@ -57,7 +59,6 @@ function InterviewRoomContent({ roomName, interviewTopic, jobDescription }: Inte
         console.log('Agent responded:', responseText);
         setFullTranscript((prev) => [...prev, `AI: ${responseText}`]);
 
-        // Cancel any previous speech synthesis to prevent overlap
         window.speechSynthesis.cancel();
         
         const utterance = new SpeechSynthesisUtterance(responseText);
@@ -99,7 +100,7 @@ function InterviewRoomContent({ roomName, interviewTopic, jobDescription }: Inte
     [handleAgentResponse, isAgentSpeaking]
   );
 
-  useEffect(() => {
+ useEffect(() => {
     const getMicPermission = async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -115,12 +116,14 @@ function InterviewRoomContent({ roomName, interviewTopic, jobDescription }: Inte
       }
     };
     getMicPermission();
-
+    
+    // Start conversation after a short delay
     const timer = setTimeout(() => {
-      const initialTranscript = [`User: Hi, I'm ready to start.`];
-      setFullTranscript(initialTranscript);
-      handleAgentResponse(initialTranscript);
-    }, 2000); 
+        const initialTranscript = [`User: Hi, I'm ready to start.`];
+        setFullTranscript(initialTranscript);
+        handleAgentResponse(initialTranscript);
+    }, 2000);
+
 
     // Cleanup
     return () => {
@@ -154,7 +157,6 @@ function InterviewRoomContent({ roomName, interviewTopic, jobDescription }: Inte
         mediaRecorderRef.current.stop();
       }
       setIsRecording(false);
-      setIsUserSpeaking(false);
     } else {
       if (!userAudioStreamRef.current) {
         toast({
@@ -179,6 +181,7 @@ function InterviewRoomContent({ roomName, interviewTopic, jobDescription }: Inte
       };
   
       mediaRecorder.onstop = () => {
+        setIsUserSpeaking(false);
         console.log('Recording stopped, creating blob...');
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
         
@@ -197,8 +200,6 @@ function InterviewRoomContent({ roomName, interviewTopic, jobDescription }: Inte
             } catch (err) {
                 console.error('Transcription error:', err);
                 handleTranscriptionError('Transcription failed. Please check your connection.');
-            } finally {
-              setIsUserSpeaking(false);
             }
         };
 
@@ -235,57 +236,76 @@ function InterviewRoomContent({ roomName, interviewTopic, jobDescription }: Inte
     }
   };
 
+  const tracks = useTracks(
+    [
+      Track.Source.Camera,
+      Track.Source.Microphone,
+      Track.Source.ScreenShare,
+      Track.Source.Unknown,
+    ],
+    { onlySubscribed: false },
+  );
+
+  const userVideoTrack = tracks.find(track => track.source === Track.Source.Camera);
+
   return (
     <>
-        <div className="h-full flex flex-col md:flex-row p-4 gap-4 bg-gray-900 text-white">
-            <div className="flex-1 flex flex-col gap-4">
-                <div className="flex-1 bg-black rounded-lg overflow-hidden relative">
+        <div className="h-full flex flex-col p-4 gap-4 bg-gray-900 text-white">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1">
+                <Card className="bg-black rounded-lg overflow-hidden flex items-center justify-center">
+                    <CardContent className="p-0 w-full h-full flex items-center justify-center relative">
+                        {aiAvatar && (
+                           <div className="flex flex-col items-center justify-center gap-4">
+                             <Image
+                                src={aiAvatar.imageUrl}
+                                alt={aiAvatar.description}
+                                data-ai-hint={aiAvatar.imageHint}
+                                width={120}
+                                height={120}
+                                className="rounded-full"
+                            />
+                            <p className="font-bold text-lg">AI Interviewer</p>
+                           </div>
+                        )}
+                        <div className="absolute bottom-4 left-4">
+                             <p className="text-sm text-green-400">{isAgentSpeaking ? 'Speaking...' : isUserSpeaking ? 'Listening...' : 'Ready'}</p>
+                        </div>
+                    </CardContent>
+                </Card>
+                <div className="bg-black rounded-lg overflow-hidden relative">
                     <VideoConference />
                 </div>
-                <div className="bg-gray-800 p-4 rounded-lg flex justify-center items-center gap-4">
-                    <Button
-                    onClick={handleToggleRecording}
-                    disabled={isAgentSpeaking}
-                    className={`px-6 py-3 rounded-full text-white font-bold transition-all duration-300 flex items-center gap-2 ${
-                        isRecording ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-green-500 hover:bg-green-600'
-                    }`}
-                    >
-                    <Mic className="h-5 w-5" />
-                    {isRecording ? 'Stop & Reply' : 'Record Answer'}
-                    </Button>
-                    <button
-                    onClick={handleEndInterview}
-                    disabled={isEnding}
-                    className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition-colors disabled:bg-gray-500 flex items-center gap-2"
-                    >
-                    {isEnding ? (
-                        <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Ending...
-                        </>
-                    ) : (
-                        'End Interview'
-                    )}
-                    </button>
-                </div>
             </div>
-            <div className="w-full md:w-1/3 xl:w-1/4 bg-gray-800 rounded-lg p-4 flex flex-col">
-                <div className="flex items-center gap-4 mb-4">
-                    {aiAvatar && (
-                    <Image
-                        src={aiAvatar.imageUrl}
-                        alt={aiAvatar.description}
-                        data-ai-hint={aiAvatar.imageHint}
-                        width={60}
-                        height={60}
-                        className="rounded-full"
-                    />
-                    )}
-                    <div>
-                    <h2 className="text-xl font-bold font-headline">AI Interviewer</h2>
-                    <p className="text-sm text-green-400">{isAgentSpeaking ? 'Speaking...' : isUserSpeaking ? 'Listening...' : 'Ready'}</p>
-                    </div>
-                </div>
+
+            <div className="bg-gray-800 p-4 rounded-lg flex justify-center items-center gap-4">
+                <Button
+                onClick={handleToggleRecording}
+                disabled={isAgentSpeaking}
+                className={`px-6 py-3 rounded-full text-white font-bold transition-all duration-300 flex items-center gap-2 ${
+                    isRecording ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-green-500 hover:bg-green-600'
+                }`}
+                >
+                <Mic className="h-5 w-5" />
+                {isRecording ? 'Stop & Reply' : 'Record Answer'}
+                </Button>
+                <button
+                onClick={handleEndInterview}
+                disabled={isEnding}
+                className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition-colors disabled:bg-gray-500 flex items-center gap-2"
+                >
+                {isEnding ? (
+                    <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Ending...
+                    </>
+                ) : (
+                    'End Interview'
+                )}
+                </button>
+            </div>
+            
+            <div className="w-full h-40 bg-gray-800 rounded-lg p-4 flex flex-col">
+                <h2 className="text-xl font-bold font-headline mb-2">Transcript</h2>
                 <div className="flex-1 bg-gray-900 rounded-lg p-3 overflow-y-auto">
                     {fullTranscript.map((line, index) => (
                     <p key={index} className="text-sm mb-2">
@@ -295,6 +315,7 @@ function InterviewRoomContent({ roomName, interviewTopic, jobDescription }: Inte
                 </div>
             </div>
         </div>
+        <RoomAudioRenderer />
     </>
   );
 }

@@ -19,6 +19,7 @@ const GenerateInterviewFeedbackInputSchema = z.object({
 export type GenerateInterviewFeedbackInput = z.infer<typeof GenerateInterviewFeedbackInputSchema>;
 
 const GenerateInterviewFeedbackOutputSchema = z.object({
+  rating: z.number().describe("A rating of the user's performance on a scale of 1 to 10."),
   feedbackReport: z
     .string()
     .describe(
@@ -37,7 +38,7 @@ const generateInterviewFeedbackPrompt = ai.definePrompt({
   name: 'generateInterviewFeedbackPrompt',
   input: {schema: GenerateInterviewFeedbackInputSchema},
   output: {schema: GenerateInterviewFeedbackOutputSchema},
-  prompt: `You are an AI interview feedback generator. Analyze the following interview transcript and provide a detailed performance report, highlighting strengths, weaknesses, and areas for improvement based on technical accuracy, verbal fluency, and soft skills.\n\nInterview Transcript: {{{interviewTranscript}}}`,
+  prompt: `You are an AI interview feedback generator. Analyze the following interview transcript and provide a detailed performance report, highlighting strengths, weaknesses, and areas for improvement based on technical accuracy, verbal fluency, and soft skills. Also, provide a rating of the user's performance on a scale of 1 to 10.\n\nInterview Transcript: {{{interviewTranscript}}}`,
 });
 
 const generateInterviewFeedbackFlow = ai.defineFlow(
