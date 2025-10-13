@@ -2,8 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { LiveKitRoom, VideoConference, useTracks } from '@livekit/components-react';
-import { Track } from 'livekit-client';
+import { LiveKitRoom, VideoConference } from '@livekit/components-react';
 import { generateToken, saveInterviewTranscript } from '@/lib/actions';
 import { realTimeTranscription } from '@/ai/flows/real-time-transcription';
 import { interviewAgent } from '@/ai/flows/interview-agent';
@@ -20,10 +19,9 @@ interface InterviewRoomProps {
 }
 
 interface InterviewRoomContentProps {
-    roomName: string;
-    interviewTopic: string;
+  roomName: string;
+  interviewTopic: string;
 }
-
 
 function InterviewRoomContent({ roomName, interviewTopic }: InterviewRoomContentProps) {
   const [fullTranscript, setFullTranscript] = useState<string[]>([]);
@@ -33,34 +31,34 @@ function InterviewRoomContent({ roomName, interviewTopic }: InterviewRoomContent
   const router = useRouter();
   const { toast } = useToast();
   const aiAvatar = PlaceHolderImages.find((p) => p.id === 'ai-avatar');
-  const audioPlayerRef = useRef<HTMLAudioElement>(null);
-  const userAudioStreamRef = useRef<MediaStream | null>(null);
 
+  const userAudioStreamRef = useRef<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-  
+
   useEffect(() => {
     const getMicPermission = async () => {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            userAudioStreamRef.current = stream;
-        } catch(err) {
-            console.error("Error accessing microphone:", err);
-            toast({
-                title: "Microphone Permission Denied",
-                description: "Please allow microphone access in your browser settings to use this feature.",
-                variant: "destructive"
-            });
-        }
-    }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        userAudioStreamRef.current = stream;
+      } catch (err) {
+        console.error('Error accessing microphone:', err);
+        toast({
+          title: 'Microphone Permission Denied',
+          description:
+            'Please allow microphone access in your browser settings to use this feature.',
+          variant: 'destructive',
+        });
+      }
+    };
     getMicPermission();
 
     // Cleanup: stop the tracks when the component unmounts
     return () => {
-        userAudioStreamRef.current?.getTracks().forEach(track => track.stop());
-    }
+      userAudioStreamRef.current?.getTracks().forEach((track) => track.stop());
+      window.speechSynthesis.cancel();
+    };
   }, [toast]);
-
 
   const handleAgentResponse = useCallback(
     async (transcriptHistory: string[]) => {
@@ -69,7 +67,7 @@ function InterviewRoomContent({ roomName, interviewTopic }: InterviewRoomContent
       setIsAgentSpeaking(true);
 
       try {
-        const { responseText, audioDataUri } = await interviewAgent({
+        const { responseText } = await interviewAgent({
           interviewTopic,
           transcript: transcriptHistory.join('\n'),
         });
@@ -77,17 +75,16 @@ function InterviewRoomContent({ roomName, interviewTopic }: InterviewRoomContent
         console.log('Agent responded:', responseText);
         setFullTranscript((prev) => [...prev, `AI: ${responseText}`]);
 
-        if (audioPlayerRef.current && audioDataUri) {
-            audioPlayerRef.current.src = audioDataUri;
-            audioPlayerRef.current.play().catch(e => console.error("Audio playback failed", e));
-            
-            audioPlayerRef.current.onended = () => {
-                console.log('Agent finished speaking.');
-                setIsAgentSpeaking(false);
-            }
-        } else {
+        const utterance = new SpeechSynthesisUtterance(responseText);
+        utterance.onend = () => {
+            console.log('Agent finished speaking.');
+            setIsAgentSpeaking(false);
+        };
+        utterance.onerror = (e) => {
+            console.error("Speech synthesis error", e);
             setIsAgentSpeaking(false);
         }
+        window.speechSynthesis.speak(utterance);
 
       } catch (e) {
         console.error('Agent error', e);
@@ -106,7 +103,6 @@ function InterviewRoomContent({ roomName, interviewTopic }: InterviewRoomContent
   useEffect(() => {
     if (fullTranscript.length === 0) {
       const timer = setTimeout(() => {
-         // This simulates the user starting the conversation, triggering the agent's first question.
          const initialTranscript = [`User: Hi, I'm ready to start.`];
          setFullTranscript(initialTranscript);
          handleAgentResponse(initialTranscript);
@@ -160,7 +156,7 @@ function InterviewRoomContent({ roomName, interviewTopic }: InterviewRoomContent
         }
       };
   }, [handleTranscript, handleTranscriptionError]);
-
+  
   const handleToggleRecording = () => {
     if (isRecording) {
       console.log('Stopping recording...');
@@ -172,7 +168,7 @@ function InterviewRoomContent({ roomName, interviewTopic }: InterviewRoomContent
       if (!userAudioStreamRef.current) {
         toast({
           title: 'Microphone Error',
-          description: 'Could not access microphone. Please check permissions and that your mic is not in use by another application.',
+          description: 'Could not access microphone. Please check permissions.',
           variant: 'destructive',
         });
         console.error('User media stream is not available.');
@@ -287,7 +283,6 @@ function InterviewRoomContent({ roomName, interviewTopic }: InterviewRoomContent
                 </div>
             </div>
         </div>
-        <audio ref={audioPlayerRef} style={{ display: 'none' }} />
     </>
   );
 }
