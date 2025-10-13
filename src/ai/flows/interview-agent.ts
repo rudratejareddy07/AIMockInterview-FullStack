@@ -48,31 +48,27 @@ ${transcript}
 Your role is to act as the interviewer. Ask the next logical question based on the conversation. Keep your questions concise.
 Your response should be just the question or comment, without any preamble like "AI:" or "Interviewer:".`;
 
-    const {output: textResponse} = await ai.generate({
+    const {output: textResponse, media } = await ai.generate({
       prompt: prompt,
+      model: 'googleai/gemini-2.5-flash-preview-tts',
       output: {
         schema: z.object({
           responseText: z.string(),
         }),
+      },
+      config: {
+        responseModalities: ['TEXT', 'AUDIO'],
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: { voiceName: 'Algenib' },
+          },
+        },
       },
     });
 
     if (!textResponse) {
       throw new Error('No text response from model');
     }
-
-    const {media} = await ai.generate({
-      model: 'googleai/gemini-2.5-flash-preview-tts',
-      config: {
-        responseModalities: ['AUDIO'],
-        speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: {voiceName: 'Algenib'},
-          },
-        },
-      },
-      prompt: textResponse.responseText,
-    });
 
     if (!media) {
       throw new Error('no media returned');
