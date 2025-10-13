@@ -63,6 +63,7 @@ function InterviewRoomContent({ roomName, interviewTopic, jobDescription }: Inte
         };
         utterance.onerror = (e) => {
             console.error("Speech synthesis error", e);
+            // Even if speech fails, allow the user to continue.
             setIsAgentSpeaking(false);
         }
         window.speechSynthesis.speak(utterance);
@@ -278,7 +279,7 @@ function InterviewRoomContent({ roomName, interviewTopic, jobDescription }: Inte
                     )}
                     <div>
                     <h2 className="text-xl font-bold font-headline">AI Interviewer</h2>
-                    <p className="text-sm text-green-400">{isAgentSpeaking ? 'Speaking...' : isRecording ? 'Listening...' : 'Ready'}</p>
+                    <p className="text-sm text-green-400">{isAgentSpeaking ? 'Speaking...' : isUserSpeaking ? 'Listening...' : 'Ready'}</p>
                     </div>
                 </div>
                 <div className="flex-1 bg-gray-900 rounded-lg p-3 overflow-y-auto">
